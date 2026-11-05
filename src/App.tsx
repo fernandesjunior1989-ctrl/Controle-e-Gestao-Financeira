@@ -13,11 +13,10 @@ interface Transaction {
   amount: number;
   type: 'income' | 'expense';
   status: 'paid' | 'pending';
-  installmentInfo?: string; // Ex: "Parcela 1/12" ou "Recorrente Mensal"
+  installmentInfo?: string;
 }
 
 export default function App() {
-  // Lançamentos
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_transactions');
     if (saved) {
@@ -37,19 +36,18 @@ export default function App() {
       },
       {
         id: '2',
-        description: 'Compra Notebook (Parcela 1/5)',
-        category: 'Outros',
-        account: 'Cartão Nubank',
+        description: 'Financiamento Imobiliário (Parcela 1/360)',
+        category: 'Habitação',
+        account: 'Banco do Brasil',
         date: '2026-06-03',
-        amount: 600.00,
+        amount: 1500.00,
         type: 'expense',
         status: 'paid',
-        installmentInfo: 'Parcela 1/5'
+        installmentInfo: 'Parcela 1/360'
       }
     ];
   });
 
-  // Categorias personalizáveis
   const [categories, setCategories] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_categories');
     if (saved) {
@@ -58,7 +56,6 @@ export default function App() {
     return ['Alimentação', 'Habitação', 'Transporte', 'Saúde', 'Lazer', 'Trabalho', 'Serviços', 'Outros'];
   });
 
-  // Contas / Cartões personalizados
   const [accounts, setAccounts] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_accounts');
     if (saved) {
@@ -67,13 +64,11 @@ export default function App() {
     return ['Banco do Brasil', 'Bradesco', 'Cartão Nubank', 'Cartão Master', 'Carteira'];
   });
 
-  // Estados dos Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
 
-  // Estados do Formulário de Transação
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Outros');
   const [account, setAccount] = useState(accounts[0] || 'Carteira');
@@ -82,20 +77,16 @@ export default function App() {
   const [status, setStatus] = useState<'paid' | 'pending'>('paid');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Novos campos para Recorrência e Parcelamento
   const [isRecurring, setIsRecurring] = useState(false);
   const [isInstallment, setIsInstallment] = useState(false);
-  const [installmentsCount, setInstallmentsCount] = useState('2');
+  const [installmentsCount, setInstallmentsCount] = useState('12');
 
-  // Estados para Inputs de Novo Cadastro
   const [newAccountInput, setNewAccountInput] = useState('');
   const [newCategoryInput, setNewCategoryInput] = useState('');
 
-  // Filtros
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
 
-  // Persistência
   useEffect(() => {
     localStorage.setItem('@controle_financeiro_transactions', JSON.stringify(transactions));
   }, [transactions]);
@@ -108,7 +99,6 @@ export default function App() {
     localStorage.setItem('@controle_financeiro_accounts', JSON.stringify(accounts));
   }, [accounts]);
 
-  // Cálculos de Totais
   const incomeRealized = transactions
     .filter(t => t.type === 'income' && t.status === 'paid')
     .reduce((acc, t) => acc + t.amount, 0);
@@ -123,7 +113,6 @@ export default function App() {
     .filter(t => t.type === 'expense' && t.status === 'pending')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  // Gastos por Categoria
   const expensesByCategory = categories.map(cat => {
     const totalCat = transactions
       .filter(t => t.category === cat && t.type === 'expense')
@@ -133,14 +122,12 @@ export default function App() {
 
   const maxCategoryExpense = Math.max(...expensesByCategory.map(i => i.total), 1);
 
-  // Filtragem
   const filteredTransactions = transactions.filter(t => {
     const matchesType = selectedTypeFilter === 'all' || t.type === selectedTypeFilter;
     const matchesCategory = selectedCategoryFilter === 'all' || t.category === selectedCategoryFilter;
     return matchesType && matchesCategory;
   });
 
-  // Ações de Transação (com suporte a parcelas e recorrência)
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!description || !amount) return;
@@ -154,7 +141,6 @@ export default function App() {
       const baseDateObj = new Date(date + 'T00:00:00');
 
       for (let i = 1; i <= totalParts; i++) {
-        // Incrementa o mês para cada parcela
         const currentMonthDate = new Date(baseDateObj);
         currentMonthDate.setMonth(baseDateObj.getMonth() + (i - 1));
         const formattedDate = currentMonthDate.toISOString().split('T')[0];
@@ -167,7 +153,7 @@ export default function App() {
           date: formattedDate,
           amount: parseFloat(installmentValue.toFixed(2)),
           type,
-          status: i === 1 ? status : 'pending', // Primeira paga/pendente conforme escolha, o resto pendente
+          status: i === 1 ? status : 'pending',
           installmentInfo: `Parcela ${i}/${totalParts}`
         };
         newTransactionsList.unshift(installmentTransaction);
@@ -195,7 +181,7 @@ export default function App() {
     setAmount('');
     setIsRecurring(false);
     setIsInstallment(false);
-    setInstallmentsCount('2');
+    setInstallmentsCount('12');
     setIsModalOpen(false);
   };
 
@@ -221,7 +207,6 @@ export default function App() {
     }
   };
 
-  // Funções de Cadastro
   const handleAddAccount = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAccountInput.trim() || accounts.includes(newAccountInput.trim())) return;
@@ -256,11 +241,10 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         
-        {/* Cabeçalho */}
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Painel Completo — Parcelamentos e Lançamentos Recorrentes</p>
+            <p className="text-sm text-slate-500">Painel Completo — Parcelamentos até 360x e Recorrências</p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -280,7 +264,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* Cards de Resumo */}
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
@@ -327,7 +310,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* Gráficos por Categoria */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -364,7 +346,6 @@ export default function App() {
           )}
         </section>
 
-        {/* Tabela e Filtros */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
           <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-2">
@@ -477,7 +458,6 @@ export default function App() {
 
       </div>
 
-      {/* Modal de Gestão de Cadastros */}
       {isManageModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-6 relative border border-slate-200">
@@ -583,7 +563,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal de Novo Lançamento (Com Parcelamento e Recorrência) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -608,7 +587,7 @@ export default function App() {
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Compra Parcelada, Aluguel..."
+                  placeholder="Ex: Financiamento, Empréstimo..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -707,7 +686,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Opções de Parcelamento e Recorrência */}
+              {/* Opções de Parcelamento até 360x e Recorrência */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
@@ -728,16 +707,17 @@ export default function App() {
                 {isInstallment && (
                   <div>
                     <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                      Número de Parcelas
+                      Número de Parcelas (Até 360x)
                     </label>
                     <select
                       value={installmentsCount}
                       onChange={(e) => setInstallmentsCount(e.target.value)}
-                      className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 max-h-40"
                     >
-                      {[2, 3, 4, 5, 6, 10, 12, 18, 24, 36, 48].map(num => (
-                        <option key={num} value={num}>{num}x vezes</option>
+                      {Array.from({ length: 359 }, (_, i) => i + 2).map(num => (
+                        <option key={num} value={num}>{num}x vezes {num === 360 ? '(30 anos)' : num === 240 ? '(20 anos)' : num === 120 ? '(10 anos)' : ''}</option>
                       ))}
+                      <option value="360">360x vezes (30 anos)</option>
                     </select>
                   </div>
                 )}
@@ -780,7 +760,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal de Confirmação de Exclusão */}
       {isDeleteModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-6 relative border border-slate-200 text-center">
