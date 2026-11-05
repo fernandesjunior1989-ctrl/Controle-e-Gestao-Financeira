@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2
 } from 'lucide-react';
 
 interface Transaction {
