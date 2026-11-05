@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, CheckCheck, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -34,11 +34,11 @@ interface Transaction {
 interface InvoicePayment {
   id: string;
   cardId: string;
-  monthKey: string; // ex: "2026-11"
+  monthKey: string;
   amountPaid: number;
   paymentDate: string;
   account: string;
-  interestAndFees: number; // Juros, multa, IOF
+  interestAndFees: number;
 }
 
 interface CategoryBudget {
@@ -244,7 +244,6 @@ export default function App() {
 
   // Cálculo de Saldo Anterior Transportado para Faturas de Cartão
   const getBroughtForwardBalance = (cardId: string, targetYear: number, targetMonth: number) => {
-    // Calcula faturas anteriores e pagamentos anteriores para apurar saldo não pago que transita
     let prevYear = targetYear;
     let prevMonth = targetMonth - 1;
     if (prevMonth < 0) {
@@ -322,7 +321,6 @@ export default function App() {
 
     setInvoicePayments([...invoicePayments, newPayment]);
 
-    // O pagamento gera uma despesa/saída na conta bancária selecionada sem duplicar no caixa de compras
     const bankExpenseTransaction: Transaction = {
       id: crypto.randomUUID(),
       description: `Pagamento Fatura ${activeCard.name} (${monthName})`,
@@ -536,7 +534,7 @@ export default function App() {
     }));
   };
 
-  // Edição por Competência (independência entre meses)
+  // Edição por Competência
   const openEditModal = (t: Transaction) => {
     setEditingTransaction(t);
     setEditDescription(t.description);
@@ -580,7 +578,7 @@ export default function App() {
     setEditingTransaction(null);
   };
 
-  // Exclusão Lógica (Soft Delete)
+  // Exclusão Lógica
   const confirmDelete = (transaction: Transaction) => {
     setTransactionToDelete(transaction);
     setDeleteOption('single');
@@ -796,7 +794,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* FATURA DE CARTÃO COM PAGAMENTO FLEXÍVEL E SALDO TRANSPORTADO */}
+        {/* FATURA DE CARTÃO */}
         {creditCards.length > 0 && activeCard && activeCardLimit && (
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -932,7 +930,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* EXTRATO COM EDIÇÃO POR COMPETÊNCIA */}
+        {/* EXTRATO */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
           <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
