@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
-  Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft
+  Wallet, PlusCircle, Trash2, X, Save, 
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -202,6 +202,16 @@ export default function App() {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   };
 
+  const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newYear = parseInt(e.target.value);
+    setCurrentDate(new Date(newYear, currentDate.getMonth(), 1));
+  };
+
+  const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newMonth = parseInt(e.target.value);
+    setCurrentDate(new Date(currentDate.getFullYear(), newMonth, 1));
+  };
+
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
   const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
@@ -215,17 +225,30 @@ export default function App() {
     return targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth;
   });
 
-  const incomeRealized = monthTransactions
+  // TOTALIZADORES DO DASHBOARD (REGRA 11)
+  const totalReceitasCompetencia = monthTransactions
+    .filter(t => t.type === 'income')
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  const totalDespesasCompetencia = monthTransactions
+    .filter(t => t.type === 'expense')
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  const resultadoMesCompetencia = totalReceitasCompetencia - totalDespesasCompetencia;
+
+  const receitasRecebidas = monthTransactions
     .filter(t => t.type === 'income' && t.status === 'paid')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  const expenseRealized = monthTransactions
+  const receitasPendentes = monthTransactions
+    .filter(t => t.type === 'income' && t.status === 'pending')
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  const despesasPagas = monthTransactions
     .filter(t => t.type === 'expense' && t.status === 'paid')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  const totalRealized = incomeRealized - expenseRealized;
-
-  const totalPendingExpense = monthTransactions
+  const despesasPendentes = monthTransactions
     .filter(t => t.type === 'expense' && t.status === 'pending')
     .reduce((acc, t) => acc + t.amount, 0);
 
@@ -386,7 +409,6 @@ export default function App() {
     return targetDueDate.toISOString().split('T')[0];
   };
 
-  // ADIÇÃO DE LANÇAMENTO COM SUPORTE ÀS DUAS MODALIDADES DE PARCELAMENTO (REGRA 10)
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!description || !amount) return;
@@ -404,7 +426,6 @@ export default function App() {
       const totalParts = parseInt(installmentsCount);
 
       if (installmentModeType === 'divide') {
-        // Modalidade 1: Divide o valor total pelas parcelas (ajustando centavos na última parcela)
         const exactPartVal = baseAmount / totalParts;
         let accumulated = 0;
 
@@ -443,7 +464,6 @@ export default function App() {
           newTransactionsList.unshift(installmentTransaction);
         }
       } else {
-        // Modalidade 2: Repete o valor informado em cada parcela
         for (let i = 1; i <= totalParts; i++) {
           let dueDate = purchaseDate;
           if (selectedCard) {
@@ -726,7 +746,7 @@ export default function App() {
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Módulo de Parcelamentos Avançados e Modalidades Inteligentes</p>
+            <p className="text-sm text-slate-500">Dashboard Executivo com Visões de Competência e Caixa</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -760,8 +780,8 @@ export default function App() {
           </div>
         </header>
 
-        {/* Competência */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        {/* Competência & Filtro de Mês/Ano (Regra 11) */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
           <button
             onClick={handlePrevMonth}
             className="flex items-center gap-1 text-slate-600 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition cursor-pointer font-medium text-sm"
@@ -770,9 +790,28 @@ export default function App() {
             <span>Mês Anterior</span>
           </button>
 
-          <div className="text-center">
-            <span className="text-xs uppercase font-bold text-slate-400">Competência Selecionada</span>
-            <h2 className="text-xl font-bold text-indigo-900 capitalize">{monthName}</h2>
+          <div className="flex items-center gap-3">
+            <select
+              value={currentMonth}
+              onChange={handleMonthChange}
+              className="border border-slate-300 rounded-lg text-sm p-2 bg-slate-50 font-bold text-indigo-900 capitalize cursor-pointer"
+            >
+              {Array.from({ length: 12 }, (_, i) => {
+                const d = new Date(2026, i, 1);
+                const name = d.toLocaleString('pt-BR', { month: 'long' });
+                return <option key={i} value={i}>{name}</option>;
+              })}
+            </select>
+
+            <select
+              value={currentYear}
+              onChange={handleYearChange}
+              className="border border-slate-300 rounded-lg text-sm p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
+            >
+              {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
           </div>
 
           <button
@@ -784,50 +823,64 @@ export default function App() {
           </button>
         </div>
 
-        {/* Resumo */}
-        <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
-              <span>Saldo Realizado</span>
-              <Wallet className="w-4 h-4 text-slate-600" />
-            </div>
-            <h2 className={`text-2xl font-bold mt-2 ${totalRealized >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
-              R$ {totalRealized.toFixed(2)}
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Resultado de caixa no mês</p>
+        {/* DASHBOARD – TOTALIZADORES MENSAIS POR COMPETÊNCIA (REGRA 11) */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-indigo-600" />
+              Dashboard Executivo — {monthName}
+            </h3>
+            <span className="text-xs text-slate-400 font-medium">Competência vs. Movimentação Efetiva (Caixa)</span>
           </div>
 
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
-              <span>Receitas Pagas</span>
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
+          {/* Visão de Competência (Planejamento) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-indigo-900 text-white p-5 rounded-xl shadow-sm">
+              <span className="text-xs uppercase font-semibold text-indigo-200 tracking-wider">Total de Receitas (Competência)</span>
+              <h2 className="text-2xl font-bold mt-2">R$ {totalReceitasCompetencia.toFixed(2)}</h2>
+              <p className="text-[11px] text-indigo-300 mt-1">Soma de todas as receitas lançadas no mês</p>
             </div>
-            <h2 className="text-2xl font-bold text-emerald-600 mt-2">
-              R$ {incomeRealized.toFixed(2)}
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Entradas validadas</p>
+
+            <div className="bg-slate-900 text-white p-5 rounded-xl shadow-sm">
+              <span className="text-xs uppercase font-semibold text-slate-400 tracking-wider">Total de Despesas (Competência)</span>
+              <h2 className="text-2xl font-bold mt-2">R$ {totalDespesasCompetencia.toFixed(2)}</h2>
+              <p className="text-[11px] text-slate-400 mt-1">Soma de todas as despesas lançadas no mês</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <span className="text-xs uppercase font-semibold text-slate-500 tracking-wider">Resultado do Mês (Competência)</span>
+              <h2 className={`text-2xl font-bold mt-2 ${resultadoMesCompetencia >= 0 ? 'text-indigo-900' : 'text-rose-600'}`}>
+                R$ {resultadoMesCompetencia.toFixed(2)}
+              </h2>
+              <p className="text-[11px] text-slate-400 mt-1">Diferença entre receitas e despesas</p>
+            </div>
           </div>
 
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
-              <span>Despesas Pagas</span>
-              <TrendingDown className="w-4 h-4 text-rose-600" />
+          {/* Visão de Caixa / Movimentação Efetiva */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-semibold uppercase text-slate-500">Receitas Recebidas</span>
+              <h2 className="text-xl font-bold text-emerald-600 mt-1">R$ {receitasRecebidas.toFixed(2)}</h2>
+              <p className="text-[11px] text-slate-400 mt-1">Efetivamente recebidas no mês</p>
             </div>
-            <h2 className="text-2xl font-bold text-rose-600 mt-2">
-              R$ {expenseRealized.toFixed(2)}
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Saídas liquidadas</p>
-          </div>
 
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
-              <span>A Pagar (Pendente)</span>
-              <Clock className="w-4 h-4 text-amber-500" />
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-semibold uppercase text-slate-500">Receitas Pendentes</span>
+              <h2 className="text-xl font-bold text-amber-600 mt-1">R$ {receitasPendentes.toFixed(2)}</h2>
+              <p className="text-[11px] text-slate-400 mt-1">Ainda não recebidas</p>
             </div>
-            <h2 className="text-2xl font-bold text-amber-600 mt-2">
-              R$ {totalPendingExpense.toFixed(2)}
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Compromissos agendados</p>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-semibold uppercase text-slate-500">Despesas Pagas</span>
+              <h2 className="text-xl font-bold text-rose-600 mt-1">R$ {despesasPagas.toFixed(2)}</h2>
+              <p className="text-[11px] text-slate-400 mt-1">Efetivamente pagas no mês</p>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-semibold uppercase text-slate-500">Despesas Pendentes</span>
+              <h2 className="text-xl font-bold text-amber-600 mt-1">R$ {despesasPendentes.toFixed(2)}</h2>
+              <p className="text-[11px] text-slate-400 mt-1">Ainda não pagas</p>
+            </div>
           </div>
         </section>
 
@@ -1749,7 +1802,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE NOVO LANÇAMENTO COM AS 2 MODALIDADES DE PARCELAMENTO (REGRA 10) */}
+      {/* MODAL DE NOVO LANÇAMENTO */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
