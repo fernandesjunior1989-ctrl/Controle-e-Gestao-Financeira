@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -29,6 +29,7 @@ interface Transaction {
   recurringInfo?: string;
   installmentGroup?: string;
   deletedAt?: string;
+  auditHistory?: string[]; // Histórico de auditoria de alterações
 }
 
 interface InvoicePayment {
@@ -115,7 +116,7 @@ export default function App() {
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
-  // Estados de edição por competência
+  // Estados de edição por competência e tipo (despesa <-> receita)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editScope, setEditScope] = useState<'single' | 'forward'>('single');
@@ -123,8 +124,10 @@ export default function App() {
   const [editAmount, setEditAmount] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
+  const [editType, setEditType] = useState<'income' | 'expense'>('expense');
+  const [isNatureChangeConfirmOpen, setIsNatureChangeConfirmOpen] = useState(false);
 
-  // Estados de Pagamento de Fatura Flexível
+  // Pagamento de Fatura Flexível
   const [paymentAmountInput, setPaymentAmountInput] = useState('');
   const [paymentFeesInput, setPaymentFeesInput] = useState('0');
   const [paymentAccount, setPaymentAccount] = useState('Banco do Brasil');
@@ -138,7 +141,7 @@ export default function App() {
   const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
 
-  // Formulário Novo Lançamento
+  // Novo Lançamento
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Outros');
   const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
@@ -242,7 +245,6 @@ export default function App() {
     return { name: pName, income: pIncome, expense: pExpense, balance: pBalance };
   });
 
-  // Cálculo de Saldo Anterior Transportado para Faturas de Cartão
   const getBroughtForwardBalance = (cardId: string, targetYear: number, targetMonth: number) => {
     let prevYear = targetYear;
     let prevMonth = targetMonth - 1;
@@ -301,7 +303,6 @@ export default function App() {
     ? 'Parcialmente Paga' 
     : 'Aberta';
 
-  // Executar Pagamento Flexível de Fatura
   const handleExecuteInvoicePayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeCard) return;
@@ -423,7 +424,8 @@ export default function App() {
           type,
           status: 'pending',
           installmentInfo: `Parcela ${i}/${totalParts}`,
-          installmentGroup: groupId
+          installmentGroup: groupId,
+          auditHistory: [`Criado em ${new Date().toLocaleString()}`]
         };
         newTransactionsList.unshift(installmentTransaction);
       }
@@ -473,7 +475,8 @@ export default function App() {
           type,
           status: i === 0 ? status : 'pending',
           recurringInfo: `Recorrente (${recurrencePeriod})`,
-          installmentGroup: groupId
+          installmentGroup: groupId,
+          auditHistory: [`Criado em ${new Date().toLocaleString()}`]
         };
         newTransactionsList.unshift(recurringTransaction);
       }
@@ -489,7 +492,8 @@ export default function App() {
         amount: baseAmount,
         type,
         status,
-        installmentGroup: groupId
+        installmentGroup: groupId,
+        auditHistory: [`Criado em ${new Date().toLocaleString()}`]
       };
       newTransactionsList.unshift(singleTransaction);
     }
@@ -534,24 +538,38 @@ export default function App() {
     }));
   };
 
-  // Edição por Competência
+  // Edição por Competência & Alteração de Tipo (Despesa <-> Receita)
   const openEditModal = (t: Transaction) => {
     setEditingTransaction(t);
     setEditDescription(t.description);
     setEditAmount(t.amount.toString());
     setEditCategory(t.category);
     setEditDueDate(t.dueDate || t.date);
+    setEditType(t.type);
     setEditScope('single');
     setIsEditModalOpen(true);
   };
 
-  const executeEditTransaction = (e: React.FormEvent) => {
+  const handleAttemptSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingTransaction) return;
+
+    // Se houve mudança de natureza (despesa <-> receita), exige confirmação conforme regra 9
+    if (editingTransaction.type !== editType) {
+      setIsNatureChangeConfirmOpen(true);
+      return;
+    }
+
+    executeFinalEdit();
+  };
+
+  const executeFinalEdit = () => {
     if (!editingTransaction) return;
     const newAmt = parseFloat(editAmount);
     if (isNaN(newAmt)) return;
 
     const targetGroup = editingTransaction.installmentGroup;
+    const auditMsg = `Editado em ${new Date().toLocaleString()}: tipo alterado para ${editType === 'income' ? 'Receita' : 'Despesa'}, valor R$ ${newAmt}`;
 
     setTransactions(transactions.map(t => {
       if (t.id === editingTransaction.id) {
@@ -560,7 +578,9 @@ export default function App() {
           description: editDescription,
           amount: newAmt,
           category: editCategory,
-          dueDate: editDueDate
+          dueDate: editDueDate,
+          type: editType,
+          auditHistory: [...(t.auditHistory || []), auditMsg]
         };
       }
       if (editScope === 'forward' && targetGroup && t.installmentGroup === targetGroup && t.dueDate > editingTransaction.dueDate) {
@@ -574,6 +594,7 @@ export default function App() {
       return t;
     }));
 
+    setIsNatureChangeConfirmOpen(false);
     setIsEditModalOpen(false);
     setEditingTransaction(null);
   };
@@ -665,7 +686,7 @@ export default function App() {
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Módulo de Edição por Competência e Pagamento Flexível de Faturas</p>
+            <p className="text-sm text-slate-500">Módulo de Alteração de Natureza por Competência e Fluxo de Caixa</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1032,7 +1053,12 @@ export default function App() {
                           </button>
                         </td>
                         <td className="p-4">
-                          <div className="font-medium text-slate-800">{t.description}</div>
+                          <div className="font-medium text-slate-800 flex items-center gap-2">
+                            {t.description}
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${t.type === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                              {t.type === 'income' ? 'Receita' : 'Despesa'}
+                            </span>
+                          </div>
                           {t.installmentInfo && (
                             <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-semibold mt-0.5">
                               <Layers className="w-3 h-3" />
@@ -1123,7 +1149,6 @@ export default function App() {
                   onChange={(e) => setPaymentAmountInput(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
                 />
-                <span className="text-[11px] text-slate-400 mt-1 block">Permite pagamento parcial ou total. O restante transita automaticamente.</span>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1182,14 +1207,14 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE EDIÇÃO POR COMPETÊNCIA */}
+      {/* MODAL DE EDIÇÃO POR COMPETÊNCIA E TIPO (DESPESA <-> RECEITA) */}
       {isEditModalOpen && editingTransaction && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200">
             <div className="flex justify-between items-center border-b pb-3 border-slate-100">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Edit3 className="w-5 h-5 text-indigo-600" />
-                Editar Lançamento (Competência)
+                <ArrowRightLeft className="w-5 h-5 text-indigo-600" />
+                Editar Lançamento e Natureza
               </h3>
               <button
                 onClick={() => setIsEditModalOpen(false)}
@@ -1199,7 +1224,7 @@ export default function App() {
               </button>
             </div>
 
-            <form onSubmit={executeEditTransaction} className="space-y-4">
+            <form onSubmit={handleAttemptSaveEdit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Descrição</label>
                 <input
@@ -1224,6 +1249,20 @@ export default function App() {
                   />
                 </div>
                 <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Tipo / Natureza</label>
+                  <select
+                    value={editType}
+                    onChange={(e) => setEditType(e.target.value as any)}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white font-bold"
+                  >
+                    <option value="expense">Despesa (Saída)</option>
+                    <option value="income">Receita (Entrada)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Vencimento</label>
                   <input
                     type="date"
@@ -1233,40 +1272,29 @@ export default function App() {
                     className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Categoria</label>
-                <select
-                  value={editCategory}
-                  onChange={(e) => setEditCategory(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white"
-                >
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Categoria</label>
+                  <select
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white"
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {editingTransaction.installmentGroup && (
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1">
                   <span className="font-bold text-slate-700 block uppercase">Escopo da Alteração:</span>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input 
-                      type="radio" 
-                      name="editScope" 
-                      checked={editScope === 'single'} 
-                      onChange={() => setEditScope('single')} 
-                    />
-                    <span>Alterar somente esta competência / parcela</span>
+                    <input type="radio" name="editScope" checked={editScope === 'single'} onChange={() => setEditScope('single')} />
+                    <span>Alterar somente esta competência</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input 
-                      type="radio" 
-                      name="editScope" 
-                      checked={editScope === 'forward'} 
-                      onChange={() => setEditScope('forward')} 
-                    />
+                    <input type="radio" name="editScope" checked={editScope === 'forward'} onChange={() => setEditScope('forward')} />
                     <span>Alterar esta e as próximas</span>
                   </label>
                 </div>
@@ -1288,6 +1316,41 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE MUDANÇA DE NATUREZA (REGRA 9) */}
+      {isNatureChangeConfirmOpen && editingTransaction && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200 text-center">
+            <div className="mx-auto w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-slate-900">Confirmação de Alteração de Natureza</h3>
+              <p className="text-sm text-slate-500">
+                Você está alterando o tipo deste lançamento de <strong className="text-slate-800">{editingTransaction.type === 'income' ? 'Receita' : 'Despesa'}</strong> para <strong className="text-indigo-700">{editType === 'income' ? 'Receita' : 'Despesa'}</strong> nesta competência. Isso impactará os saldos e indicadores financeiros do mês.
+              </p>
+            </div>
+
+            <div className="flex justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsNatureChangeConfirmOpen(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer border border-slate-200"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={executeFinalEdit}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition shadow-sm cursor-pointer"
+              >
+                <span>Confirmar e Salvar</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1385,7 +1448,7 @@ export default function App() {
                 <span className="font-bold text-slate-700 block uppercase">Opções de Exclusão:</span>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name="delOpt" checked={deleteOption === 'single'} onChange={() => setDeleteOption('single')} />
-                  <span>Excluir somente esta competência / parcela</span>
+                  <span>Excluir somente esta competência</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name="delOpt" checked={deleteOption === 'forward'} onChange={() => setDeleteOption('forward')} />
