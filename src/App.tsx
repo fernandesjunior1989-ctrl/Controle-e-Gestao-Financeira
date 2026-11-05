@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard, Settings, Tag, Repeat, Layers, Calendar
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard, Settings, Repeat, Layers, Calendar
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -11,17 +11,17 @@ interface CreditCardAccount {
   totalLimit: number;
   closingDay: number;
   dueDay: number;
-  includeOnClosingDayRule: 'current' | 'next'; // Regra se a compra for exatamente no dia de fechamento
+  includeOnClosingDayRule: 'current' | 'next';
 }
 
 interface Transaction {
   id: string;
   description: string;
   category: string;
-  account: string; // Nome da conta ou ID do cartão
+  account: string;
   creditCardId?: string;
-  date: string; // Data da compra ou vencimento da parcela
-  dueDate: string; // Data real de vencimento da fatura
+  date: string;
+  dueDate: string;
   amount: number;
   type: 'income' | 'expense';
   status: 'paid' | 'pending';
@@ -30,7 +30,6 @@ interface Transaction {
 }
 
 export default function App() {
-  // 1. Cadastro dos Cartões de Crédito
   const [creditCards, setCreditCards] = useState<CreditCardAccount[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_credit_cards');
     if (saved) {
@@ -49,7 +48,6 @@ export default function App() {
     ];
   });
 
-  // 2. Lançamentos / Transações
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_transactions');
     if (saved) {
@@ -58,7 +56,6 @@ export default function App() {
     return [];
   });
 
-  // Categorias
   const [categories, setCategories] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_categories');
     if (saved) {
@@ -67,7 +64,6 @@ export default function App() {
     return ['Alimentação', 'Habitação', 'Transporte', 'Saúde', 'Lazer', 'Trabalho', 'Serviços', 'Outros'];
   });
 
-  // Contas Bancárias Comuns (Conta Corrente / Carteira)
   const [accounts, setAccounts] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_accounts');
     if (saved) {
@@ -76,27 +72,26 @@ export default function App() {
     return ['Banco do Brasil', 'Bradesco', 'Carteira'];
   });
 
-  // Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
 
-  // Formulário de Transação
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Outros');
   const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
   const [amount, setAmount] = useState('');
-  const [type, setType] = useState<'income' | 'expense'>('expense');
-  const [status, setStatus] = useState<'paid' | 'pending'>('pending');
+  const [type] = useState<'income' | 'expense'>('expense');
+  const [status] = useState<'paid' | 'pending'>('pending');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Opções de Parcelamento e Recorrência
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [isRecurring] = useState(false);
   const [isInstallment, setIsInstallment] = useState(false);
   const [installmentsCount, setInstallmentsCount] = useState('6');
 
-  // Formulário de Cadastro de Cartão
+  const [newAccountInput, setNewAccountInput] = useState('');
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+
   const [newCardName, setNewCardName] = useState('');
   const [newCardBank, setNewCardBank] = useState('');
   const [newCardLimit, setNewCardLimit] = useState('');
@@ -104,16 +99,10 @@ export default function App() {
   const [newCardDueDay, setNewCardDueDay] = useState('17');
   const [newCardRule, setNewCardRule] = useState<'current' | 'next'>('next');
 
-  // Formulário de Cadastro de Outros
-  const [newAccountInput, setNewAccountInput] = useState('');
-  const [newCategoryInput, setNewCategoryInput] = useState('');
-
-  // Filtros
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [selectedCardView, setSelectedCardView] = useState<string>(creditCards[0]?.id || '');
 
-  // Persistência
   useEffect(() => {
     localStorage.setItem('@controle_financeiro_transactions', JSON.stringify(transactions));
   }, [transactions]);
@@ -130,7 +119,6 @@ export default function App() {
     localStorage.setItem('@controle_financeiro_credit_cards', JSON.stringify(creditCards));
   }, [creditCards]);
 
-  // Cálculos Financeiros Globais
   const incomeRealized = transactions
     .filter(t => t.type === 'income' && t.status === 'paid')
     .reduce((acc, t) => acc + t.amount, 0);
@@ -145,12 +133,10 @@ export default function App() {
     .filter(t => t.type === 'expense' && t.status === 'pending')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  // Cálculo de Limite por Cartão
   const getCardLimitDetails = (cardId: string) => {
     const card = creditCards.find(c => c.id === cardId);
     if (!card) return { total: 0, used: 0, available: 0 };
     
-    // Limite ocupado por parcelas pendentes (não pagas)
     const used = transactions
       .filter(t => t.creditCardId === cardId && t.status === 'pending')
       .reduce((acc, t) => acc + t.amount, 0);
@@ -162,14 +148,12 @@ export default function App() {
     };
   };
 
-  // Algoritmo de Cálculo de Ciclo de Fatura
   const calculateInvoiceDueDate = (purchaseDateStr: string, card: CreditCardAccount, monthOffset: number = 0) => {
     const dateObj = new Date(purchaseDateStr + 'T00:00:00');
     const day = dateObj.getDate();
     let year = dateObj.getFullYear();
-    let month = dateObj.getMonth(); // 0 a 11
+    let month = dateObj.getMonth();
 
-    // Regra de Fechamento
     let isNextInvoice = false;
     if (day > card.closingDay) {
       isNextInvoice = true;
@@ -180,15 +164,12 @@ export default function App() {
     if (isNextInvoice) {
       month += 1;
     }
-
-    // Adiciona o deslocamento de parcelas
     month += monthOffset;
 
     const targetDueDate = new Date(year, month, card.dueDay);
     return targetDueDate.toISOString().split('T')[0];
   };
 
-  // Criar Lançamento de Compra
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!description || !amount) return;
@@ -212,7 +193,6 @@ export default function App() {
         if (selectedCard) {
           dueDate = calculateInvoiceDueDate(purchaseDate, selectedCard, i - 1);
         } else {
-          // Se for conta comum, apenas incrementa os meses da data da compra
           const d = new Date(purchaseDate + 'T00:00:00');
           d.setMonth(d.getMonth() + (i - 1));
           dueDate = d.toISOString().split('T')[0];
@@ -260,13 +240,9 @@ export default function App() {
     setTransactions(newTransactionsList);
     setDescription('');
     setAmount('');
-    setIsRecurring(false);
-    setIsInstallment(false);
-    setInstallmentsCount('6');
     setIsModalOpen(false);
   };
 
-  // Cadastro de Novo Cartão
   const handleAddCreditCard = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCardName || !newCardLimit) return;
@@ -289,6 +265,36 @@ export default function App() {
 
   const handleDeleteCard = (id: string) => {
     setCreditCards(creditCards.filter(c => c.id !== id));
+  };
+
+  const handleAddAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAccountInput.trim() || accounts.includes(newAccountInput.trim())) return;
+    setAccounts([...accounts, newAccountInput.trim()]);
+    setNewAccountInput('');
+  };
+
+  const handleDeleteAccount = (accToDelete: string) => {
+    if (accounts.length <= 1) {
+      alert('Você precisa ter pelo menos uma conta cadastrada.');
+      return;
+    }
+    setAccounts(accounts.filter(a => a !== accToDelete));
+  };
+
+  const handleAddCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryInput.trim() || categories.includes(newCategoryInput.trim())) return;
+    setCategories([...categories, newCategoryInput.trim()]);
+    setNewCategoryInput('');
+  };
+
+  const handleDeleteCategory = (catToDelete: string) => {
+    if (categories.length <= 1) {
+      alert('Você precisa ter pelo menos uma categoria cadastrada.');
+      return;
+    }
+    setCategories(categories.filter(c => c !== catToDelete));
   };
 
   const toggleStatus = (id: string) => {
@@ -328,7 +334,6 @@ export default function App() {
     return matchesType && matchesCategory;
   });
 
-  // Filtro de Faturas para o Cartão Selecionado
   const activeCard = creditCards.find(c => c.id === selectedCardView) || creditCards[0];
   const activeCardLimit = activeCard ? getCardLimitDetails(activeCard.id) : null;
   const activeCardTransactions = activeCard 
@@ -339,7 +344,6 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         
-        {/* Cabeçalho */}
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
@@ -363,7 +367,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* Cards de Resumo de Caixa */}
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
@@ -410,7 +413,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* MÓDULO VISUAL DE ACOMPANHAMENTO DE CARTÕES DE CRÉDITO */}
         {creditCards.length > 0 && activeCard && activeCardLimit && (
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -422,7 +424,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Seletor de Cartões */}
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-slate-500 uppercase">Selecionar Cartão:</span>
                 <select
@@ -437,7 +438,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Status do Limite do Cartão Ativo */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <span className="text-xs font-semibold uppercase text-slate-500">Limite Total</span>
@@ -463,7 +463,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Resumo de Faturas Futuras do Cartão */}
             <div className="space-y-3">
               <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-indigo-600" />
@@ -515,7 +514,6 @@ export default function App() {
           </section>
         )}
 
-        {/* Gráficos por Categoria */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -552,7 +550,6 @@ export default function App() {
           )}
         </section>
 
-        {/* Tabela de Lançamentos Gerais */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
           <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-2">
@@ -665,7 +662,6 @@ export default function App() {
 
       </div>
 
-      {/* Modal de Gerenciamento de Cadastros e Cartões */}
       {isManageModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -682,7 +678,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* Cadastro de Novo Cartão de Crédito */}
             <div className="border border-indigo-100 bg-indigo-50/40 p-4 rounded-xl space-y-4">
               <h4 className="font-bold text-sm text-indigo-900 flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-indigo-600" />
@@ -765,7 +760,6 @@ export default function App() {
                 </div>
               </form>
 
-              {/* Lista de Cartões Cadastrados */}
               <div className="space-y-2 pt-2 border-t border-indigo-100">
                 <span className="text-xs font-bold text-slate-600">Cartões Ativos:</span>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -789,6 +783,53 @@ export default function App() {
               </div>
             </div>
 
+            {/* Gerir Contas e Categorias */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="border border-slate-200 p-4 rounded-xl space-y-3">
+                <h4 className="font-bold text-sm text-slate-800">Contas / Bancos</h4>
+                <form onSubmit={handleAddAccount} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nova conta..."
+                    value={newAccountInput}
+                    onChange={(e) => setNewAccountInput(e.target.value)}
+                    className="flex-1 border border-slate-300 rounded-lg p-2 text-xs"
+                  />
+                  <button type="submit" className="bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-medium">Add</button>
+                </form>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {accounts.map(acc => (
+                    <div key={acc} className="flex justify-between items-center bg-slate-50 p-2 rounded text-xs">
+                      <span>{acc}</span>
+                      <button onClick={() => handleDeleteAccount(acc)} className="text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border border-slate-200 p-4 rounded-xl space-y-3">
+                <h4 className="font-bold text-sm text-slate-800">Categorias</h4>
+                <form onSubmit={handleAddCategory} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nova categoria..."
+                    value={newCategoryInput}
+                    onChange={(e) => setNewCategoryInput(e.target.value)}
+                    className="flex-1 border border-slate-300 rounded-lg p-2 text-xs"
+                  />
+                  <button type="submit" className="bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-medium">Add</button>
+                </form>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {categories.map(cat => (
+                    <div key={cat} className="flex justify-between items-center bg-slate-50 p-2 rounded text-xs">
+                      <span>{cat}</span>
+                      <button onClick={() => handleDeleteCategory(cat)} className="text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="flex justify-end pt-2 border-t border-slate-100">
               <button
                 type="button"
@@ -802,7 +843,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal de Novo Lançamento (Com Integração ao Cartão) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -905,17 +945,13 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Opções de Parcelamento até 360x e Recorrência */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={isInstallment}
-                      onChange={(e) => {
-                        setIsInstallment(e.target.checked);
-                        if (e.target.checked) setIsRecurring(false);
-                      }}
+                      onChange={(e) => setIsInstallment(e.target.checked)}
                       className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
                     />
                     <span>Parcelar Compra</span>
@@ -962,7 +998,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal de Exclusão */}
       {isDeleteModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-6 relative border border-slate-200 text-center">
