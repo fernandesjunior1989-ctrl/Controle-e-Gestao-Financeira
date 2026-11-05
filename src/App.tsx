@@ -82,7 +82,7 @@ export default function App() {
     return { 'Alimentação': 1000, 'Habitação': 2000, 'Transporte': 600 };
   });
 
-  const [accounts, setAccounts] = useState<string[]>(() => {
+  const [accounts] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_accounts');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -101,18 +101,15 @@ export default function App() {
   const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
-  const [status, setStatus] = useState<'paid' | 'pending'>('pending');
+  const [status] = useState<'paid' | 'pending'>('pending');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Estados detalhados para Parcelamento e Recorrência exatos
   const [launchMode, setLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
   const [installmentsCount, setInstallmentsCount] = useState('12');
   const [recurrencePeriod, setRecurrencePeriod] = useState<string>('Mensal');
   const [recurrenceEndType, setRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
   const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
 
-  const [newAccountInput, setNewAccountInput] = useState('');
-  const [newCategoryInput, setNewCategoryInput] = useState('');
   const [tempBudgets, setTempBudgets] = useState<CategoryBudget>(budgets);
 
   const [newCardName, setNewCardName] = useState('');
@@ -312,9 +309,8 @@ export default function App() {
         newTransactionsList.unshift(installmentTransaction);
       }
     } else if (launchMode === 'recurring') {
-      // Gerador de Recorrência Conforme Periodicidade
       const baseDateObj = new Date(purchaseDate + 'T00:00:00');
-      let iterations = 12; // padrão 1 ano para recorrências mensais/semanais se indeterminado
+      let iterations = 12;
       
       let stepDays = 30;
       if (recurrencePeriod === 'Diária') stepDays = 1;
@@ -410,36 +406,6 @@ export default function App() {
     setCreditCards(creditCards.filter(c => c.id !== id));
   };
 
-  const handleAddAccount = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAccountInput.trim() || accounts.includes(newAccountInput.trim())) return;
-    setAccounts([...accounts, newAccountInput.trim()]);
-    setNewAccountInput('');
-  };
-
-  const handleDeleteAccount = (accToDelete: string) => {
-    if (accounts.length <= 1) {
-      alert('Você precisa ter pelo menos uma conta cadastrada.');
-      return;
-    }
-    setAccounts(accounts.filter(a => a !== accToDelete));
-  };
-
-  const handleAddCategory = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCategoryInput.trim() || categories.includes(newCategoryInput.trim())) return;
-    setCategories([...categories, newCategoryInput.trim()]);
-    setNewCategoryInput('');
-  };
-
-  const handleDeleteCategory = (catToDelete: string) => {
-    if (categories.length <= 1) {
-      alert('Você precisa ter pelo menos uma categoria cadastrada.');
-      return;
-    }
-    setCategories(categories.filter(c => c !== catToDelete));
-  };
-
   const toggleStatus = (id: string) => {
     setTransactions(transactions.map(t => {
       if (t.id === id) {
@@ -492,7 +458,6 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         
-        {/* Cabeçalho */}
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
@@ -523,7 +488,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* Seletor do Mês de Competência */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <button
             onClick={handlePrevMonth}
@@ -547,7 +511,6 @@ export default function App() {
           </button>
         </div>
 
-        {/* Cards de Resumo */}
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
@@ -594,7 +557,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* PROJEÇÃO DE SALDO FUTURO */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -618,7 +580,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* GESTÃO DE FATURAS DE CARTÃO */}
         {creditCards.length > 0 && activeCard && activeCardLimit && (
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -686,7 +647,6 @@ export default function App() {
           </section>
         )}
 
-        {/* METAS E ORÇAMENTOS POR CATEGORIA */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -734,7 +694,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* EXTRATO COM EXPORTAÇÃO CSV */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
           <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-2">
@@ -861,7 +820,6 @@ export default function App() {
 
       </div>
 
-      {/* MODAL DE METAS */}
       {isBudgetModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -914,7 +872,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE CADASTROS */}
       {isManageModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -1012,6 +969,28 @@ export default function App() {
                   </button>
                 </div>
               </form>
+
+              <div className="space-y-2 pt-2 border-t border-indigo-100">
+                <span className="text-xs font-bold text-slate-600">Cartões Ativos:</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {creditCards.map(card => (
+                    <div key={card.id} className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 text-xs">
+                      <div>
+                        <div className="font-bold text-slate-800">{card.name} ({card.bank})</div>
+                        <div className="text-slate-400 text-[10px]">
+                          Fecha dia {card.closingDay} | Vence dia {card.dueDay} | R$ {card.totalLimit.toFixed(2)}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteCard(card.id)}
+                        className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end pt-2 border-t border-slate-100">
@@ -1027,7 +1006,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE NOVO LANÇAMENTO (COM MODOS DE PARCELAMENTO E RECORRÊNCIA EXATOS) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -1159,7 +1137,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* SEÇÃO DINÂMICA DE PARCELAMENTO */}
               {launchMode === 'installment' && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
                   <label className="block text-xs font-semibold uppercase text-slate-500">Quantidade de Parcelas</label>
@@ -1175,7 +1152,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* SEÇÃO DINÂMICA DE RECORRÊNCIA */}
               {launchMode === 'recurring' && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                   <div className="grid grid-cols-2 gap-3">
@@ -1245,7 +1221,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE EXCLUSÃO */}
       {isDeleteModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-6 relative border border-slate-200 text-center">
