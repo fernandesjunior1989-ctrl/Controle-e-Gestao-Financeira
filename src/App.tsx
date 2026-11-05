@@ -26,11 +26,12 @@ interface Transaction {
   type: 'income' | 'expense';
   status: 'paid' | 'pending';
   installmentInfo?: string;
+  recurringInfo?: string;
   installmentGroup?: string;
 }
 
 interface CategoryBudget {
-  [categoryName: string]: number; // Teto de gasto mensal
+  [categoryName: string]: number;
 }
 
 export default function App() {
@@ -73,7 +74,6 @@ export default function App() {
     return ['Alimentação', 'Habitação', 'Transporte', 'Saúde', 'Lazer', 'Trabalho', 'Serviços', 'Outros'];
   });
 
-  // Orçamentos por categoria guardados em localStorage
   const [budgets, setBudgets] = useState<CategoryBudget>(() => {
     const saved = localStorage.getItem('@controle_financeiro_budgets');
     if (saved) {
@@ -100,13 +100,16 @@ export default function App() {
   const [category, setCategory] = useState(categories[0] || 'Outros');
   const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
   const [amount, setAmount] = useState('');
-  const [type] = useState<'income' | 'expense'>('expense');
-  const [status] = useState<'paid' | 'pending'>('pending');
+  const [type, setType] = useState<'income' | 'expense'>('expense');
+  const [status, setStatus] = useState<'paid' | 'pending'>('pending');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const [isRecurring] = useState(false);
-  const [isInstallment, setIsInstallment] = useState(false);
-  const [installmentsCount, setInstallmentsCount] = useState('6');
+  // Estados detalhados para Parcelamento e Recorrência exatos
+  const [launchMode, setLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
+  const [installmentsCount, setInstallmentsCount] = useState('12');
+  const [recurrencePeriod, setRecurrencePeriod] = useState<string>('Mensal');
+  const [recurrenceEndType, setRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
 
   const [newAccountInput, setNewAccountInput] = useState('');
   const [newCategoryInput, setNewCategoryInput] = useState('');
@@ -174,7 +177,6 @@ export default function App() {
     .filter(t => t.type === 'expense' && t.status === 'pending')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  // Projeção de Saldo para os Próximos 6 Meses
   const cashFlowProjections = Array.from({ length: 6 }, (_, index) => {
     const projDate = new Date(currentYear, currentMonth + index, 1);
     const pYear = projDate.getFullYear();
@@ -221,7 +223,6 @@ export default function App() {
     setTransactions(updated);
   };
 
-  // Exportar extrato em CSV
   const exportToCSV = () => {
     const headers = ["Status", "Descricao", "Conta/Cartao", "Categoria", "Vencimento", "Tipo", "Valor"];
     const rows = filteredTransactions.map(t => [
@@ -279,7 +280,7 @@ export default function App() {
     const selectedCard = creditCards.find(c => c.id === selectedCardId);
     const accountName = isCreditCard ? selectedCard?.name || 'Cartão' : paymentSource.replace('acc-', '');
 
-    if (isInstallment && parseInt(installmentsCount) > 1) {
+    if (launchMode === 'installment') {
       const totalParts = parseInt(installmentsCount);
       const installmentValue = baseAmount / totalParts;
 
@@ -310,12 +311,58 @@ export default function App() {
         };
         newTransactionsList.unshift(installmentTransaction);
       }
-    } else {
-      let dueDate = purchaseDate;
-      if (selectedCard) {
-        dueDate = calculateInvoiceDueDate(purchaseDate, selectedCard, 0);
+    } else if (launchMode === 'recurring') {
+      // Gerador de Recorrência Conforme Periodicidade
+      const baseDateObj = new Date(purchaseDate + 'T00:00:00');
+      let iterations = 12; // padrão 1 ano para recorrências mensais/semanais se indeterminado
+      
+      let stepDays = 30;
+      if (recurrencePeriod === 'Diária') stepDays = 1;
+      else if (recurrencePeriod === 'Semanal') stepDays = 7;
+      else if (recurrencePeriod === 'Quinzenal') stepDays = 15;
+      else if (recurrencePeriod === 'Mensal') stepDays = 30;
+      else if (recurrencePeriod === 'Bimestral') stepDays = 60;
+      else if (recurrencePeriod === 'Trimestral') stepDays = 90;
+      else if (recurrencePeriod === 'Semestral') stepDays = 180;
+      else if (recurrencePeriod === 'Anual') stepDays = 365;
+
+      if (recurrenceEndType === 'date' && recurrenceEndDate) {
+        const endObj = new Date(recurrenceEndDate + 'T00:00:00');
+        const diffTime = Math.abs(endObj.getTime() - baseDateObj.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        iterations = Math.max(1, Math.floor(diffDays / (stepDays || 30)));
       }
 
+      for (let i = 0; i < iterations; i++) {
+        const currentD = new Date(baseDateObj);
+        if (recurrencePeriod === 'Anual') {
+          currentD.setFullYear(baseDateObj.getFullYear() + i);
+        } else if (recurrencePeriod === 'Mensal' || recurrencePeriod === 'Bimestral' || recurrencePeriod === 'Trimestral' || recurrencePeriod === 'Semestral') {
+          const monthsAdd = recurrencePeriod === 'Mensal' ? i : recurrencePeriod === 'Bimestral' ? i * 2 : recurrencePeriod === 'Trimestral' ? i * 3 : i * 6;
+          currentD.setMonth(baseDateObj.getMonth() + monthsAdd);
+        } else {
+          currentD.setDate(baseDateObj.getDate() + (i * stepDays));
+        }
+
+        const formattedDate = currentD.toISOString().split('T')[0];
+
+        const recurringTransaction: Transaction = {
+          id: crypto.randomUUID(),
+          description,
+          category: category || categories[0],
+          account: accountName,
+          creditCardId: selectedCardId,
+          date: formattedDate,
+          dueDate: formattedDate,
+          amount: baseAmount,
+          type,
+          status: i === 0 ? status : 'pending',
+          recurringInfo: `Recorrente (${recurrencePeriod})`,
+          installmentGroup: groupId
+        };
+        newTransactionsList.unshift(recurringTransaction);
+      }
+    } else {
       const singleTransaction: Transaction = {
         id: crypto.randomUUID(),
         description,
@@ -323,11 +370,10 @@ export default function App() {
         account: accountName,
         creditCardId: selectedCardId,
         date: purchaseDate,
-        dueDate: dueDate,
+        dueDate: purchaseDate,
         amount: baseAmount,
         type,
         status,
-        installmentInfo: isRecurring ? 'Recorrente Mensal' : undefined,
         installmentGroup: groupId
       };
       newTransactionsList.unshift(singleTransaction);
@@ -336,6 +382,7 @@ export default function App() {
     setTransactions(newTransactionsList);
     setDescription('');
     setAmount('');
+    setLaunchMode('single');
     setIsModalOpen(false);
   };
 
@@ -449,7 +496,7 @@ export default function App() {
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Sistema Completo com Metas, Projeção de Caixa e Gestão de Cartões</p>
+            <p className="text-sm text-slate-500">Módulo de Parcelamentos Avançados e Recorrências Automáticas</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -547,7 +594,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* PROJEÇÃO DE SALDO FUTURO (CASH FLOW 6 MESES) */}
+        {/* PROJEÇÃO DE SALDO FUTURO */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -639,7 +686,7 @@ export default function App() {
           </section>
         )}
 
-        {/* ORÇAMENTOS E METAS POR CATEGORIA (BUDGETING) */}
+        {/* METAS E ORÇAMENTOS POR CATEGORIA */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -685,43 +732,6 @@ export default function App() {
               );
             })}
           </div>
-        </section>
-
-        {/* GRÁFICO DE DESPESAS POR CATEGORIA */}
-        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <PieChart className="w-5 h-5 text-indigo-600" />
-              Despesas por Categoria — {monthName}
-            </h3>
-            <span className="text-xs text-slate-400 font-medium">Distribuição de Gastos</span>
-          </div>
-
-          {expensesByCategory.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-6">
-              Nenhuma despesa registada para este mês.
-            </p>
-          ) : (
-            <div className="space-y-3 pt-2">
-              {expensesByCategory.map((item) => {
-                const percentage = (item.total / maxCategoryExpense) * 100;
-                return (
-                  <div key={item.category} className="space-y-1">
-                    <div className="flex justify-between text-xs font-semibold text-slate-700">
-                      <span>{item.category}</span>
-                      <span>R$ {item.total.toFixed(2)}</span>
-                    </div>
-                    <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                      <div 
-                        className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500" 
-                        style={{ width: `${percentage}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </section>
 
         {/* EXTRATO COM EXPORTAÇÃO CSV */}
@@ -804,8 +814,14 @@ export default function App() {
                         <div className="font-medium text-slate-800">{t.description}</div>
                         {t.installmentInfo && (
                           <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-semibold mt-0.5">
-                            {t.installmentInfo.includes('Parcela') ? <Layers className="w-3 h-3" /> : <Repeat className="w-3 h-3" />}
+                            <Layers className="w-3 h-3" />
                             {t.installmentInfo}
+                          </span>
+                        )}
+                        {t.recurringInfo && (
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-semibold mt-0.5">
+                            <Repeat className="w-3 h-3" />
+                            {t.recurringInfo}
                           </span>
                         )}
                       </td>
@@ -845,7 +861,7 @@ export default function App() {
 
       </div>
 
-      {/* MODAL DE METAS / ORÇAMENTO */}
+      {/* MODAL DE METAS */}
       {isBudgetModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -996,74 +1012,6 @@ export default function App() {
                   </button>
                 </div>
               </form>
-
-              <div className="space-y-2 pt-2 border-t border-indigo-100">
-                <span className="text-xs font-bold text-slate-600">Cartões Ativos:</span>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {creditCards.map(card => (
-                    <div key={card.id} className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 text-xs">
-                      <div>
-                        <div className="font-bold text-slate-800">{card.name} ({card.bank})</div>
-                        <div className="text-slate-400 text-[10px]">
-                          Fecha dia {card.closingDay} | Vence dia {card.dueDay} | R$ {card.totalLimit.toFixed(2)}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleDeleteCard(card.id)}
-                        className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="border border-slate-200 p-4 rounded-xl space-y-3">
-                <h4 className="font-bold text-sm text-slate-800">Contas / Bancos</h4>
-                <form onSubmit={handleAddAccount} className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Nova conta..."
-                    value={newAccountInput}
-                    onChange={(e) => setNewAccountInput(e.target.value)}
-                    className="flex-1 border border-slate-300 rounded-lg p-2 text-xs"
-                  />
-                  <button type="submit" className="bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-medium">Add</button>
-                </form>
-                <div className="space-y-1 max-h-32 overflow-y-auto">
-                  {accounts.map(acc => (
-                    <div key={acc} className="flex justify-between items-center bg-slate-50 p-2 rounded text-xs">
-                      <span>{acc}</span>
-                      <button onClick={() => handleDeleteAccount(acc)} className="text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="border border-slate-200 p-4 rounded-xl space-y-3">
-                <h4 className="font-bold text-sm text-slate-800">Categorias</h4>
-                <form onSubmit={handleAddCategory} className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Nova categoria..."
-                    value={newCategoryInput}
-                    onChange={(e) => setNewCategoryInput(e.target.value)}
-                    className="flex-1 border border-slate-300 rounded-lg p-2 text-xs"
-                  />
-                  <button type="submit" className="bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-medium">Add</button>
-                </form>
-                <div className="space-y-1 max-h-32 overflow-y-auto">
-                  {categories.map(cat => (
-                    <div key={cat} className="flex justify-between items-center bg-slate-50 p-2 rounded text-xs">
-                      <span>{cat}</span>
-                      <button onClick={() => handleDeleteCategory(cat)} className="text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
 
             <div className="flex justify-end pt-2 border-t border-slate-100">
@@ -1079,7 +1027,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE NOVO LANÇAMENTO */}
+      {/* MODAL DE NOVO LANÇAMENTO (COM MODOS DE PARCELAMENTO E RECORRÊNCIA EXATOS) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -1099,12 +1047,12 @@ export default function App() {
             <form onSubmit={handleAddTransaction} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Descrição da Compra
+                  Descrição
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Supermercado, Eletrônicos..."
+                  placeholder="Ex: Aluguel, Supermercado..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1114,7 +1062,7 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Valor Total (R$)
+                    Valor (R$)
                   </label>
                   <input
                     type="number"
@@ -1129,7 +1077,23 @@ export default function App() {
 
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Forma / Cartão
+                    Tipo
+                  </label>
+                  <select
+                    value={type}
+                    onChange={(e) => setType(e.target.value as any)}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                  >
+                    <option value="expense">Despesa (Saída)</option>
+                    <option value="income">Receita (Entrada)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                    Conta / Cartão
                   </label>
                   <select
                     value={paymentSource}
@@ -1138,9 +1102,7 @@ export default function App() {
                   >
                     <optgroup label="Cartões de Crédito">
                       {creditCards.map(c => (
-                        <option key={c.id} value={`card-${c.id}`}>
-                          {c.name} (Fecha dia {c.closingDay})
-                        </option>
+                        <option key={c.id} value={`card-${c.id}`}>{c.name}</option>
                       ))}
                     </optgroup>
                     <optgroup label="Contas / Carteira">
@@ -1150,9 +1112,7 @@ export default function App() {
                     </optgroup>
                   </select>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
                     Categoria
@@ -1167,10 +1127,12 @@ export default function App() {
                     ))}
                   </select>
                 </div>
+              </div>
 
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Data da Compra
+                    Data Inicial
                   </label>
                   <input
                     type="date"
@@ -1180,39 +1142,87 @@ export default function App() {
                     className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
-              </div>
 
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isInstallment}
-                      onChange={(e) => setIsInstallment(e.target.checked)}
-                      className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
-                    />
-                    <span>Parcelar Compra</span>
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                    Modalidade
                   </label>
-                  <Layers className="w-4 h-4 text-slate-400" />
+                  <select
+                    value={launchMode}
+                    onChange={(e) => setLaunchMode(e.target.value as any)}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-semibold text-indigo-900"
+                  >
+                    <option value="single">Lançamento Único</option>
+                    <option value="installment">Parcelado (Finito)</option>
+                    <option value="recurring">Recorrente (Contínuo)</option>
+                  </select>
                 </div>
-
-                {isInstallment && (
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                      Quantidade de Parcelas
-                    </label>
-                    <select
-                      value={installmentsCount}
-                      onChange={(e) => setInstallmentsCount(e.target.value)}
-                      className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    >
-                      {Array.from({ length: 359 }, (_, i) => i + 2).map(num => (
-                        <option key={num} value={num}>{num}x vezes</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
+
+              {/* SEÇÃO DINÂMICA DE PARCELAMENTO */}
+              {launchMode === 'installment' && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-semibold uppercase text-slate-500">Quantidade de Parcelas</label>
+                  <select
+                    value={installmentsCount}
+                    onChange={(e) => setInstallmentsCount(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
+                  >
+                    {Array.from({ length: 359 }, (_, i) => i + 2).map(num => (
+                      <option key={num} value={num}>{num}x vezes</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* SEÇÃO DINÂMICA DE RECORRÊNCIA */}
+              {launchMode === 'recurring' && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Periodicidade</label>
+                      <select
+                        value={recurrencePeriod}
+                        onChange={(e) => setRecurrencePeriod(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
+                      >
+                        <option value="Diária">Diária</option>
+                        <option value="Semanal">Semanal</option>
+                        <option value="Quinzenal">Quinzenal</option>
+                        <option value="Mensal">Mensal</option>
+                        <option value="Bimestral">Bimestral</option>
+                        <option value="Trimestral">Trimestral</option>
+                        <option value="Semestral">Semestral</option>
+                        <option value="Anual">Anual</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Prazo</label>
+                      <select
+                        value={recurrenceEndType}
+                        onChange={(e) => setRecurrenceEndType(e.target.value as any)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
+                      >
+                        <option value="indeterminate">Prazo Indeterminado</option>
+                        <option value="date">Até Data Final</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {recurrenceEndType === 'date' && (
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Data de Término</label>
+                      <input
+                        type="date"
+                        value={recurrenceEndDate}
+                        onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
