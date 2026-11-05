@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard 
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard, Settings, Tag
 } from 'lucide-react';
 
 interface Transaction {
@@ -15,22 +15,12 @@ interface Transaction {
   status: 'paid' | 'pending';
 }
 
-const CATEGORIES = [
-  'Alimentação', 'Habitação', 'Transporte', 'Saúde', 
-  'Lazer', 'Trabalho', 'Serviços', 'Outros'
-];
-
-const ACCOUNTS = ['Banco do Brasil', 'Bradesco', 'Cartão Nubank', 'Cartão Master', 'Carteira'];
-
 export default function App() {
+  // Lançamentos
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_transactions');
     if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Erro ao carregar do localStorage', e);
-      }
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
     }
     return [
       {
@@ -52,43 +42,65 @@ export default function App() {
         amount: 850.00,
         type: 'expense',
         status: 'paid'
-      },
-      {
-        id: '3',
-        description: 'Conta de Luz',
-        category: 'Habitação',
-        account: 'Bradesco',
-        date: '2026-06-15',
-        amount: 220.00,
-        type: 'expense',
-        status: 'pending'
       }
     ];
   });
 
+  // Categorias personalizáveis cadastradas pelo usuário
+  const [categories, setCategories] = useState<string[]>(() => {
+    const saved = localStorage.getItem('@controle_financeiro_categories');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return ['Alimentação', 'Habitação', 'Transporte', 'Saúde', 'Lazer', 'Trabalho', 'Serviços', 'Outros'];
+  });
+
+  // Contas / Cartões personalizados cadastrados pelo usuário
+  const [accounts, setAccounts] = useState<string[]>(() => {
+    const saved = localStorage.getItem('@controle_financeiro_accounts');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return ['Banco do Brasil', 'Bradesco', 'Cartão Nubank', 'Cartão Master', 'Carteira'];
+  });
+
   // Estados dos Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isManageModalOpen, setIsManageModalOpen] = useState(false); // Modal para gerenciar Contas e Categorias
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
 
-  // Estados do Formulário
+  // Estados do Formulário de Transação
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0]);
-  const [account, setAccount] = useState(ACCOUNTS[0]);
+  const [category, setCategory] = useState(categories[0] || 'Outros');
+  const [account, setAccount] = useState(accounts[0] || 'Carteira');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [status, setStatus] = useState<'paid' | 'pending'>('paid');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
+  // Estados para Inputs de Novo Cadastro (Conta e Categoria)
+  const [newAccountInput, setNewAccountInput] = useState('');
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+
   // Filtros
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
 
+  // Persistência
   useEffect(() => {
     localStorage.setItem('@controle_financeiro_transactions', JSON.stringify(transactions));
   }, [transactions]);
 
-  // Cálculos de Totais (Realizados e Projetados)
+  useEffect(() => {
+    localStorage.setItem('@controle_financeiro_categories', JSON.stringify(categories));
+  }, [categories]);
+
+  useEffect(() => {
+    localStorage.setItem('@controle_financeiro_accounts', JSON.stringify(accounts));
+  }, [accounts]);
+
+  // Cálculos de Totais
   const incomeRealized = transactions
     .filter(t => t.type === 'income' && t.status === 'paid')
     .reduce((acc, t) => acc + t.amount, 0);
@@ -103,8 +115,8 @@ export default function App() {
     .filter(t => t.type === 'expense' && t.status === 'pending')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  // Gastos por Categoria (para o gráfico em barras)
-  const expensesByCategory = CATEGORIES.map(cat => {
+  // Gastos por Categoria (para o gráfico)
+  const expensesByCategory = categories.map(cat => {
     const totalCat = transactions
       .filter(t => t.category === cat && t.type === 'expense')
       .reduce((acc, t) => acc + t.amount, 0);
@@ -113,13 +125,14 @@ export default function App() {
 
   const maxCategoryExpense = Math.max(...expensesByCategory.map(i => i.total), 1);
 
-  // Filtragem dos Lançamentos para Exibição
+  // Filtragem
   const filteredTransactions = transactions.filter(t => {
     const matchesType = selectedTypeFilter === 'all' || t.type === selectedTypeFilter;
     const matchesCategory = selectedCategoryFilter === 'all' || t.category === selectedCategoryFilter;
     return matchesType && matchesCategory;
   });
 
+  // Ações de Transação
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!description || !amount) return;
@@ -127,8 +140,8 @@ export default function App() {
     const newTransaction: Transaction = {
       id: crypto.randomUUID(),
       description,
-      category,
-      account,
+      category: category || categories[0],
+      account: account || accounts[0],
       date,
       amount: parseFloat(amount),
       type,
@@ -136,8 +149,6 @@ export default function App() {
     };
 
     setTransactions([newTransaction, ...transactions]);
-    
-    // Reset
     setDescription('');
     setAmount('');
     setIsModalOpen(false);
@@ -165,6 +176,37 @@ export default function App() {
     }
   };
 
+  // Funções de Cadastro Personalizado
+  const handleAddAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAccountInput.trim() || accounts.includes(newAccountInput.trim())) return;
+    setAccounts([...accounts, newAccountInput.trim()]);
+    setNewAccountInput('');
+  };
+
+  const handleDeleteAccount = (accToDelete: string) => {
+    if (accounts.length <= 1) {
+      alert('Você precisa ter pelo menos uma conta/cartão cadastrada.');
+      return;
+    }
+    setAccounts(accounts.filter(a => a !== accToDelete));
+  };
+
+  const handleAddCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryInput.trim() || categories.includes(newCategoryInput.trim())) return;
+    setCategories([...categories, newCategoryInput.trim()]);
+    setNewCategoryInput('');
+  };
+
+  const handleDeleteCategory = (catToDelete: string) => {
+    if (categories.length <= 1) {
+      alert('Você precisa ter pelo menos uma categoria cadastrada.');
+      return;
+    }
+    setCategories(categories.filter(c => c !== catToDelete));
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -173,15 +215,24 @@ export default function App() {
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Painel Completo — Contas, Cartões e Gráficos por Categoria</p>
+            <p className="text-sm text-slate-500">Painel Completo — Gestão de Contas, Cartões e Categorias</p>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-medium transition shadow-sm cursor-pointer"
-          >
-            <PlusCircle className="w-5 h-5" />
-            <span>Novo Lançamento</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsManageModalOpen(true)}
+              className="flex items-center gap-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm"
+            >
+              <Settings className="w-4 h-4" />
+              <span>Cadastros</span>
+            </button>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-medium transition shadow-sm cursor-pointer text-sm"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Novo Lançamento</span>
+            </button>
+          </div>
         </header>
 
         {/* Cards de Resumo */}
@@ -231,7 +282,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* Secção de Gráficos por Categoria */}
+        {/* Gráficos por Categoria */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -268,7 +319,7 @@ export default function App() {
           )}
         </section>
 
-        {/* Filtros e Tabela de Lançamentos */}
+        {/* Tabela e Filtros */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
           <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-2">
@@ -276,7 +327,6 @@ export default function App() {
               <h3 className="text-lg font-bold text-slate-900">Extrato de Lançamentos</h3>
             </div>
 
-            {/* Barra de Filtros */}
             <div className="flex flex-wrap items-center gap-3">
               <select
                 value={selectedTypeFilter}
@@ -294,7 +344,7 @@ export default function App() {
                 className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-medium"
               >
                 <option value="all">Todas as Categorias</option>
-                {CATEGORIES.map(cat => (
+                {categories.map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>
@@ -332,7 +382,6 @@ export default function App() {
                               ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
                               : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
                           }`}
-                          title="Clique para alternar o status"
                         >
                           {t.status === 'paid' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
                           <span>{t.status === 'paid' ? 'Pago' : 'Pendente'}</span>
@@ -340,7 +389,7 @@ export default function App() {
                       </td>
                       <td className="p-4 font-medium text-slate-800">{t.description}</td>
                       <td className="p-4 text-slate-600 text-xs font-medium flex items-center gap-1.5">
-                        {t.account.includes('Cartão') ? (
+                        {t.account.toLowerCase().includes('cartão') ? (
                           <CreditCard className="w-3.5 h-3.5 text-indigo-500" />
                         ) : (
                           <Building2 className="w-3.5 h-3.5 text-slate-400" />
@@ -360,7 +409,6 @@ export default function App() {
                         <button
                           onClick={() => confirmDelete(t.id)}
                           className="text-slate-400 hover:text-rose-600 transition p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer inline-flex items-center gap-1 text-xs font-medium"
-                          title="Excluir Lançamento"
                         >
                           <Trash2 className="w-4 h-4" />
                           <span>Excluir</span>
@@ -375,6 +423,118 @@ export default function App() {
         </section>
 
       </div>
+
+      {/* Modal de Gestão de Contas e Categorias (Cadastros) */}
+      {isManageModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-6 relative border border-slate-200">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Settings className="w-5 h-5 text-indigo-600" />
+                Gerenciar Cadastros (Contas e Categorias)
+              </h3>
+              <button
+                onClick={() => setIsManageModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              {/* Gerir Contas / Cartões */}
+              <div className="space-y-4 border border-slate-200 p-4 rounded-xl">
+                <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-indigo-600" />
+                  Contas / Cartões
+                </h4>
+                
+                <form onSubmit={handleAddAccount} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nova conta ou cartão..."
+                    value={newAccountInput}
+                    onChange={(e) => setNewAccountInput(e.target.value)}
+                    className="flex-1 border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                  >
+                    Adicionar
+                  </button>
+                </form>
+
+                <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
+                  {accounts.map(acc => (
+                    <div key={acc} className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 text-sm">
+                      <span className="font-medium text-slate-700">{acc}</span>
+                      <button
+                        onClick={() => handleDeleteAccount(acc)}
+                        className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
+                        title="Excluir Conta"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Gerir Categorias */}
+              <div className="space-y-4 border border-slate-200 p-4 rounded-xl">
+                <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-emerald-600" />
+                  Categorias
+                </h4>
+                
+                <form onSubmit={handleAddCategory} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nova categoria..."
+                    value={newCategoryInput}
+                    onChange={(e) => setNewCategoryInput(e.target.value)}
+                    className="flex-1 border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                  >
+                    Adicionar
+                  </button>
+                </form>
+
+                <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
+                  {categories.map(cat => (
+                    <div key={cat} className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 text-sm">
+                      <span className="font-medium text-slate-700">{cat}</span>
+                      <button
+                        onClick={() => handleDeleteCategory(cat)}
+                        className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
+                        title="Excluir Categoria"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsManageModalOpen(false)}
+                className="px-5 py-2 text-sm font-medium bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition cursor-pointer"
+              >
+                Concluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de Novo Lançamento */}
       {isModalOpen && (
@@ -449,7 +609,7 @@ export default function App() {
                     onChange={(e) => setAccount(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                   >
-                    {ACCOUNTS.map(acc => (
+                    {accounts.map(acc => (
                       <option key={acc} value={acc}>{acc}</option>
                     ))}
                   </select>
@@ -464,7 +624,7 @@ export default function App() {
                     onChange={(e) => setCategory(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                   >
-                    {CATEGORIES.map(cat => (
+                    {categories.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
