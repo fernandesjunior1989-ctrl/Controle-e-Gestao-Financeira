@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2 } from 'lucide-react';
 
 interface Transaction {
@@ -11,7 +11,7 @@ interface Transaction {
 }
 
 export function App() {
-  const [transactions, setTransactions] = useState<Transaction[]>([
+  const [transactions] = useState<Transaction[]>([
     { id: '1', description: 'Salário Mensal', amount: 4500, type: 'income', category: 'Trabalho', date: '2026-06-01' },
     { id: '2', description: 'Supermercado Mensal', amount: 850, type: 'expense', category: 'Alimentação', date: '2026-06-03' },
     { id: '3', description: 'Manutenção de Escritório', amount: 300, type: 'expense', category: 'Serviços', date: '2026-06-05' },
