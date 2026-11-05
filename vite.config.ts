@@ -19,3 +19,4 @@ export default defineConfig({
     }
   ],
   base: process.env.NODE_ENV === 'production' ? '/Controle-e-Gestao-Financeira/' : '/',
+});
