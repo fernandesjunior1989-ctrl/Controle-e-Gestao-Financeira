@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard, Settings, Repeat, Layers, Calendar, ChevronLeft, ChevronRight, CheckCheck
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard, Settings, Repeat, Layers, Calendar, ChevronLeft, ChevronRight, CheckCheck, Target, TrendingUp as TrendUp, Download
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -29,8 +29,11 @@ interface Transaction {
   installmentGroup?: string;
 }
 
+interface CategoryBudget {
+  [categoryName: string]: number; // Teto de gasto mensal
+}
+
 export default function App() {
-  // Data de referência do filtro (Ano-Mês)
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -70,6 +73,15 @@ export default function App() {
     return ['Alimentação', 'Habitação', 'Transporte', 'Saúde', 'Lazer', 'Trabalho', 'Serviços', 'Outros'];
   });
 
+  // Orçamentos por categoria guardados em localStorage
+  const [budgets, setBudgets] = useState<CategoryBudget>(() => {
+    const saved = localStorage.getItem('@controle_financeiro_budgets');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return { 'Alimentação': 1000, 'Habitação': 2000, 'Transporte': 600 };
+  });
+
   const [accounts, setAccounts] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_accounts');
     if (saved) {
@@ -80,6 +92,7 @@ export default function App() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
+  const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
 
@@ -97,6 +110,7 @@ export default function App() {
 
   const [newAccountInput, setNewAccountInput] = useState('');
   const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [tempBudgets, setTempBudgets] = useState<CategoryBudget>(budgets);
 
   const [newCardName, setNewCardName] = useState('');
   const [newCardBank, setNewCardBank] = useState('');
@@ -125,7 +139,10 @@ export default function App() {
     localStorage.setItem('@controle_financeiro_credit_cards', JSON.stringify(creditCards));
   }, [creditCards]);
 
-  // Funções de Navegação Mensal
+  useEffect(() => {
+    localStorage.setItem('@controle_financeiro_budgets', JSON.stringify(budgets));
+  }, [budgets]);
+
   const handlePrevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   };
@@ -135,16 +152,14 @@ export default function App() {
   };
 
   const currentYear = currentDate.getFullYear();
-  const currentMonth = currentDate.getMonth(); // 0-11
+  const currentMonth = currentDate.getMonth();
   const monthName = currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
 
-  // Filtrar transações pertencentes ao mês/ano selecionado (baseado no dueDate ou date)
   const monthTransactions = transactions.filter(t => {
     const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
     return targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth;
   });
 
-  // Cálculos do Mês Selecionado
   const incomeRealized = monthTransactions
     .filter(t => t.type === 'income' && t.status === 'paid')
     .reduce((acc, t) => acc + t.amount, 0);
@@ -159,7 +174,25 @@ export default function App() {
     .filter(t => t.type === 'expense' && t.status === 'pending')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  // Limite por Cartão
+  // Projeção de Saldo para os Próximos 6 Meses
+  const cashFlowProjections = Array.from({ length: 6 }, (_, index) => {
+    const projDate = new Date(currentYear, currentMonth + index, 1);
+    const pYear = projDate.getFullYear();
+    const pMonth = projDate.getMonth();
+    const pName = projDate.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+
+    const pTxs = transactions.filter(t => {
+      const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
+      return targetDate.getFullYear() === pYear && targetDate.getMonth() === pMonth;
+    });
+
+    const pIncome = pTxs.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+    const pExpense = pTxs.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+    const pBalance = pIncome - pExpense;
+
+    return { name: pName, income: pIncome, expense: pExpense, balance: pBalance };
+  });
+
   const getCardLimitDetails = (cardId: string) => {
     const card = creditCards.find(c => c.id === cardId);
     if (!card) return { total: 0, used: 0, available: 0 };
@@ -175,7 +208,6 @@ export default function App() {
     };
   };
 
-  // Pagar a fatura do cartão no mês atual
   const handlePayInvoice = (cardId: string) => {
     const updated = transactions.map(t => {
       if (t.creditCardId === cardId && t.status === 'pending') {
@@ -187,6 +219,29 @@ export default function App() {
       return t;
     });
     setTransactions(updated);
+  };
+
+  // Exportar extrato em CSV
+  const exportToCSV = () => {
+    const headers = ["Status", "Descricao", "Conta/Cartao", "Categoria", "Vencimento", "Tipo", "Valor"];
+    const rows = filteredTransactions.map(t => [
+      t.status === 'paid' ? 'Pago' : 'Pendente',
+      `"${t.description}"`,
+      `"${t.account}"`,
+      `"${t.category}"`,
+      t.dueDate || t.date,
+      t.type === 'income' ? 'Receita' : 'Despesa',
+      t.amount.toFixed(2).replace('.', ',')
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(";"), ...rows.map(e => e.join(";"))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `extrato_${currentYear}_${currentMonth + 1}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const calculateInvoiceDueDate = (purchaseDateStr: string, card: CreditCardAccount, monthOffset: number = 0) => {
@@ -394,15 +449,22 @@ export default function App() {
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Módulo de Cartões de Crédito com Fechamento & Navegação Mensal</p>
+            <p className="text-sm text-slate-500">Sistema Completo com Metas, Projeção de Caixa e Gestão de Cartões</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => { setTempBudgets(budgets); setIsBudgetModalOpen(true); }}
+              className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-3.5 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm"
+            >
+              <Target className="w-4 h-4 text-amber-600" />
+              <span>Metas / Orçamento</span>
+            </button>
             <button
               onClick={() => setIsManageModalOpen(true)}
               className="flex items-center gap-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm"
             >
               <Settings className="w-4 h-4" />
-              <span>Cadastros & Cartões</span>
+              <span>Cadastros</span>
             </button>
             <button
               onClick={() => setIsModalOpen(true)}
@@ -442,7 +504,7 @@ export default function App() {
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
-              <span>Saldo Realizado ({currentMonth + 1}/{currentYear})</span>
+              <span>Saldo Realizado</span>
               <Wallet className="w-4 h-4 text-slate-600" />
             </div>
             <h2 className={`text-2xl font-bold mt-2 ${totalRealized >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
@@ -485,7 +547,31 @@ export default function App() {
           </div>
         </section>
 
-        {/* MÓDULO VISUAL DE ACOMPANHAMENTO DE CARTÕES */}
+        {/* PROJEÇÃO DE SALDO FUTURO (CASH FLOW 6 MESES) */}
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <TrendUp className="w-5 h-5 text-indigo-600" />
+              Projeção de Fluxo de Caixa (Próximos 6 Meses)
+            </h3>
+            <span className="text-xs text-slate-400 font-medium">Previsão baseada em parcelamentos e recorrências</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+            {cashFlowProjections.map((p, idx) => (
+              <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-center space-y-1">
+                <span className="text-xs font-bold text-indigo-900 uppercase">{p.name}</span>
+                <div className="text-[11px] text-emerald-600 font-semibold">+R$ {p.income.toFixed(0)}</div>
+                <div className="text-[11px] text-rose-600 font-semibold">-R$ {p.expense.toFixed(0)}</div>
+                <div className={`text-xs font-bold pt-1 border-t border-slate-200 ${p.balance >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
+                  R$ {p.balance.toFixed(0)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* GESTÃO DE FATURAS DE CARTÃO */}
         {creditCards.length > 0 && activeCard && activeCardLimit && (
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -550,59 +636,58 @@ export default function App() {
                 <p className="text-[11px] text-slate-400 mt-1">Restituído ao pagar parcelas</p>
               </div>
             </div>
-
-            <div className="space-y-3">
-              <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-indigo-600" />
-                Lançamentos na Fatura de {monthName}
-              </h4>
-
-              {activeCardMonthTransactions.length === 0 ? (
-                <p className="text-sm text-slate-400 py-4 text-center border border-dashed rounded-lg">
-                  Nenhuma parcela ou compra com vencimento na fatura deste mês.
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-slate-100 text-slate-600 uppercase font-semibold border-b">
-                        <th className="p-3">Data Compra</th>
-                        <th className="p-3">Descrição</th>
-                        <th className="p-3">Parcela</th>
-                        <th className="p-3">Vencimento Fatura</th>
-                        <th className="p-3">Valor</th>
-                        <th className="p-3 text-center">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {activeCardMonthTransactions.map((t) => (
-                        <tr key={t.id} className="hover:bg-slate-50">
-                          <td className="p-3 text-slate-500">{t.date}</td>
-                          <td className="p-3 font-medium text-slate-800">{t.description}</td>
-                          <td className="p-3 font-semibold text-indigo-600">{t.installmentInfo || 'À vista'}</td>
-                          <td className="p-3 font-bold text-slate-700">{t.dueDate}</td>
-                          <td className="p-3 font-bold text-rose-600">R$ {t.amount.toFixed(2)}</td>
-                          <td className="p-3 text-center">
-                            <button
-                              onClick={() => toggleStatus(t.id)}
-                              className={`px-2 py-1 rounded-full font-semibold cursor-pointer text-[10px] ${
-                                t.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                              }`}
-                            >
-                              {t.status === 'paid' ? 'Pago' : 'Pendente'}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
           </section>
         )}
 
-        {/* Gráficos por Categoria */}
+        {/* ORÇAMENTOS E METAS POR CATEGORIA (BUDGETING) */}
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <Target className="w-5 h-5 text-amber-600" />
+              Metas de Gastos por Categoria — {monthName}
+            </h3>
+            <button
+              onClick={() => { setTempBudgets(budgets); setIsBudgetModalOpen(true); }}
+              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+            >
+              Configurar Metas
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {categories.map(cat => {
+              const spent = monthTransactions
+                .filter(t => t.category === cat && t.type === 'expense')
+                .reduce((acc, t) => acc + t.amount, 0);
+              const budgetLimit = budgets[cat] || 0;
+              if (budgetLimit === 0 && spent === 0) return null;
+
+              const pct = budgetLimit > 0 ? (spent / budgetLimit) * 100 : 0;
+              const isOver = budgetLimit > 0 && spent > budgetLimit;
+
+              return (
+                <div key={cat} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                    <span>{cat}</span>
+                    <span className={isOver ? 'text-rose-600 font-extrabold' : 'text-slate-500'}>
+                      R$ {spent.toFixed(2)} / {budgetLimit > 0 ? `R$ ${budgetLimit.toFixed(2)}` : 'Sem meta'}
+                    </span>
+                  </div>
+                  {budgetLimit > 0 && (
+                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-2 rounded-full transition-all duration-500 ${isOver ? 'bg-rose-600' : pct > 80 ? 'bg-amber-500' : 'bg-emerald-600'}`}
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      ></div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* GRÁFICO DE DESPESAS POR CATEGORIA */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -639,7 +724,7 @@ export default function App() {
           )}
         </section>
 
-        {/* Extrato do Mês Selecionado */}
+        {/* EXTRATO COM EXPORTAÇÃO CSV */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
           <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-2">
@@ -648,6 +733,14 @@ export default function App() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={exportToCSV}
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-sm"
+              >
+                <Download className="w-4 h-4" />
+                <span>Exportar CSV (Excel)</span>
+              </button>
+
               <select
                 value={selectedTypeFilter}
                 onChange={(e) => setSelectedTypeFilter(e.target.value as any)}
@@ -752,7 +845,60 @@ export default function App() {
 
       </div>
 
-      {/* Modais de Cadastro, Novo Lançamento e Exclusão mantidos idênticos */}
+      {/* MODAL DE METAS / ORÇAMENTO */}
+      {isBudgetModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Target className="w-5 h-5 text-amber-600" />
+                Definir Metas de Gastos por Categoria
+              </h3>
+              <button
+                onClick={() => setIsBudgetModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {categories.map(cat => (
+                <div key={cat} className="flex items-center justify-between gap-4">
+                  <span className="text-sm font-semibold text-slate-700 w-1/2">{cat}</span>
+                  <input
+                    type="number"
+                    step="50"
+                    placeholder="R$ 0.00"
+                    value={tempBudgets[cat] || ''}
+                    onChange={(e) => setTempBudgets({ ...tempBudgets, [cat]: parseFloat(e.target.value) || 0 })}
+                    className="w-1/2 border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsBudgetModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => { setBudgets(tempBudgets); setIsBudgetModalOpen(false); }}
+                className="px-5 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition shadow-sm cursor-pointer"
+              >
+                Salvar Metas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CADASTROS */}
       {isManageModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -933,6 +1079,7 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL DE NOVO LANÇAMENTO */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -1088,6 +1235,7 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL DE EXCLUSÃO */}
       {isDeleteModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-6 relative border border-slate-200 text-center">
