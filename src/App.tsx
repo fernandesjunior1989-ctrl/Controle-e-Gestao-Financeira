@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, CheckCheck, Target, TrendingUp as TrendUp, Download
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, CheckCheck, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -28,6 +28,7 @@ interface Transaction {
   installmentInfo?: string;
   recurringInfo?: string;
   installmentGroup?: string;
+  deletedAt?: string; // Para Soft Delete / Lixeira
 }
 
 interface CategoryBudget {
@@ -93,8 +94,15 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
+  const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
+  
+  // Modais de exclusão avançados
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
+  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
+  const [deleteOption, setDeleteOption] = useState<'single' | 'forward' | 'all'>('single');
+
+  const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
 
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Outros');
@@ -155,7 +163,11 @@ export default function App() {
   const currentMonth = currentDate.getMonth();
   const monthName = currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
 
-  const monthTransactions = transactions.filter(t => {
+  // Apenas transações ativas (não deletadas na lixeira)
+  const activeTransactions = transactions.filter(t => !t.deletedAt);
+  const trashedTransactions = transactions.filter(t => t.deletedAt);
+
+  const monthTransactions = activeTransactions.filter(t => {
     const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
     return targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth;
   });
@@ -180,7 +192,7 @@ export default function App() {
     const pMonth = projDate.getMonth();
     const pName = projDate.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
 
-    const pTxs = transactions.filter(t => {
+    const pTxs = activeTransactions.filter(t => {
       const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
       return targetDate.getFullYear() === pYear && targetDate.getMonth() === pMonth;
     });
@@ -196,7 +208,7 @@ export default function App() {
     const card = creditCards.find(c => c.id === cardId);
     if (!card) return { total: 0, used: 0, available: 0 };
     
-    const used = transactions
+    const used = activeTransactions
       .filter(t => t.creditCardId === cardId && t.status === 'pending')
       .reduce((acc, t) => acc + t.amount, 0);
 
@@ -209,7 +221,7 @@ export default function App() {
 
   const handlePayInvoice = (cardId: string) => {
     const updated = transactions.map(t => {
-      if (t.creditCardId === cardId && t.status === 'pending') {
+      if (!t.deletedAt && t.creditCardId === cardId && t.status === 'pending') {
         const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
         if (targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth) {
           return { ...t, status: 'paid' as const };
@@ -415,17 +427,76 @@ export default function App() {
     }));
   };
 
-  const confirmDelete = (id: string) => {
-    setTransactionToDelete(id);
+  // Funções de Exclusão Lógica (Soft Delete) e Gestão por Grupo
+  const confirmDelete = (transaction: Transaction) => {
+    setTransactionToDelete(transaction);
+    setDeleteOption('single');
     setIsDeleteModalOpen(true);
   };
 
-  const handleDeleteTransaction = () => {
-    if (transactionToDelete) {
-      setTransactions(transactions.filter(t => t.id !== transactionToDelete));
-      setIsDeleteModalOpen(false);
-      setTransactionToDelete(null);
+  const executeSoftDelete = () => {
+    if (!transactionToDelete) return;
+    const nowIso = new Date().toISOString();
+
+    const targetGroup = transactionToDelete.installmentGroup;
+
+    setTransactions(transactions.map(t => {
+      if (t.id === transactionToDelete.id) {
+        return { ...t, deletedAt: nowIso };
+      }
+      if (targetGroup && t.installmentGroup === targetGroup) {
+        if (deleteOption === 'all') {
+          return { ...t, deletedAt: nowIso };
+        }
+        if (deleteOption === 'forward' && t.dueDate >= transactionToDelete.dueDate) {
+          return { ...t, deletedAt: nowIso };
+        }
+      }
+      return t;
+    }));
+
+    setIsDeleteModalOpen(false);
+    setTransactionToDelete(null);
+  };
+
+  // Exclusão em Lote
+  const toggleSelectAll = () => {
+    if (selectedTransactionIds.length === filteredTransactions.length) {
+      setSelectedTransactionIds([]);
+    } else {
+      setSelectedTransactionIds(filteredTransactions.map(t => t.id));
     }
+  };
+
+  const toggleSelectOne = (id: string) => {
+    if (selectedTransactionIds.includes(id)) {
+      setSelectedTransactionIds(selectedTransactionIds.filter(itemId => itemId !== id));
+    } else {
+      setSelectedTransactionIds([...selectedTransactionIds, id]);
+    }
+  };
+
+  const executeBatchDelete = () => {
+    const nowIso = new Date().toISOString();
+    setTransactions(transactions.map(t => {
+      if (selectedTransactionIds.includes(t.id)) {
+        return { ...t, deletedAt: nowIso };
+      }
+      return t;
+    }));
+    setSelectedTransactionIds([]);
+    setIsBatchDeleteModalOpen(false);
+  };
+
+  // Restaurar da Lixeira
+  const restoreFromTrash = (id: string) => {
+    setTransactions(transactions.map(t => {
+      if (t.id === id) {
+        const { deletedAt, ...rest } = t;
+        return rest;
+      }
+      return t;
+    }));
   };
 
   const filteredTransactions = monthTransactions.filter(t => {
@@ -445,22 +516,34 @@ export default function App() {
     .filter(t => t.status === 'pending')
     .reduce((acc, t) => acc + t.amount, 0);
 
+  const batchTotalAmount = transactions
+    .filter(t => selectedTransactionIds.includes(t.id))
+    .reduce((acc, t) => acc + t.amount, 0);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         
+        {/* Cabeçalho */}
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Módulo de Parcelamentos Avançados e Recorrências Automáticas</p>
+            <p className="text-sm text-slate-500">Módulo de Exclusão em Lote, Lixeira (Soft Delete) e Parcelamentos</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setIsTrashModalOpen(true)}
+              className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 px-3.5 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm"
+            >
+              <Trash className="w-4 h-4 text-rose-600" />
+              <span>Lixeira ({trashedTransactions.length})</span>
+            </button>
             <button
               onClick={() => { setTempBudgets(budgets); setIsBudgetModalOpen(true); }}
               className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-3.5 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm"
             >
               <Target className="w-4 h-4 text-amber-600" />
-              <span>Metas / Orçamento</span>
+              <span>Metas</span>
             </button>
             <button
               onClick={() => setIsManageModalOpen(true)}
@@ -479,6 +562,7 @@ export default function App() {
           </div>
         </header>
 
+        {/* Competência */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <button
             onClick={handlePrevMonth}
@@ -502,6 +586,7 @@ export default function App() {
           </button>
         </div>
 
+        {/* Cards de Resumo */}
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
@@ -548,6 +633,7 @@ export default function App() {
           </div>
         </section>
 
+        {/* PROJEÇÃO DE CAIXA */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -571,6 +657,7 @@ export default function App() {
           </div>
         </section>
 
+        {/* CARTÃO DE CRÉDITO */}
         {creditCards.length > 0 && activeCard && activeCardLimit && (
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -638,6 +725,7 @@ export default function App() {
           </section>
         )}
 
+        {/* METAS */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -685,11 +773,21 @@ export default function App() {
           </div>
         </section>
 
+        {/* EXTRATO E EXCLUSÃO EM LOTE */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
           <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <Filter className="w-5 h-5 text-slate-500" />
               <h3 className="text-lg font-bold text-slate-900">Extrato ({monthName})</h3>
+              {selectedTransactionIds.length > 0 && (
+                <button
+                  onClick={() => setIsBatchDeleteModalOpen(true)}
+                  className="flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition shadow-sm cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Excluir Selecionados ({selectedTransactionIds.length})</span>
+                </button>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -728,6 +826,15 @@ export default function App() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200">
+                  <th className="p-4 w-10 text-center">
+                    <button onClick={toggleSelectAll} className="cursor-pointer text-slate-500">
+                      {filteredTransactions.length > 0 && selectedTransactionIds.length === filteredTransactions.length ? (
+                        <CheckSquare className="w-4 h-4 text-emerald-600" />
+                      ) : (
+                        <Square className="w-4 h-4" />
+                      )}
+                    </button>
+                  </th>
                   <th className="p-4">Status</th>
                   <th className="p-4">Descrição / Detalhes</th>
                   <th className="p-4">Origem / Cartão</th>
@@ -740,69 +847,77 @@ export default function App() {
               <tbody className="divide-y divide-slate-100 text-sm">
                 {filteredTransactions.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400">
+                    <td colSpan={8} className="p-8 text-center text-slate-400">
                       Nenhum lançamento encontrado para os filtros selecionados neste mês.
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50/80 transition">
-                      <td className="p-4">
-                        <button
-                          onClick={() => toggleStatus(t.id)}
-                          className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full cursor-pointer transition ${
-                            t.status === 'paid'
-                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                              : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                          }`}
-                        >
-                          {t.status === 'paid' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-                          <span>{t.status === 'paid' ? 'Pago' : 'Pendente'}</span>
-                        </button>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-medium text-slate-800">{t.description}</div>
-                        {t.installmentInfo && (
-                          <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-semibold mt-0.5">
-                            <Layers className="w-3 h-3" />
-                            {t.installmentInfo}
+                  filteredTransactions.map((t) => {
+                    const isSelected = selectedTransactionIds.includes(t.id);
+                    return (
+                      <tr key={t.id} className={`hover:bg-slate-50/80 transition ${isSelected ? 'bg-indigo-50/40' : ''}`}>
+                        <td className="p-4 text-center">
+                          <button onClick={() => toggleSelectOne(t.id)} className="cursor-pointer text-slate-500">
+                            {isSelected ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4" />}
+                          </button>
+                        </td>
+                        <td className="p-4">
+                          <button
+                            onClick={() => toggleStatus(t.id)}
+                            className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full cursor-pointer transition ${
+                              t.status === 'paid'
+                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                            }`}
+                          >
+                            {t.status === 'paid' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                            <span>{t.status === 'paid' ? 'Pago' : 'Pendente'}</span>
+                          </button>
+                        </td>
+                        <td className="p-4">
+                          <div className="font-medium text-slate-800">{t.description}</div>
+                          {t.installmentInfo && (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-semibold mt-0.5">
+                              <Layers className="w-3 h-3" />
+                              {t.installmentInfo}
+                            </span>
+                          )}
+                          {t.recurringInfo && (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-semibold mt-0.5">
+                              <Repeat className="w-3 h-3" />
+                              {t.recurringInfo}
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-4 text-slate-600 text-xs font-medium flex items-center gap-1.5">
+                          {t.creditCardId ? (
+                            <CreditCard className="w-3.5 h-3.5 text-indigo-500" />
+                          ) : (
+                            <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                          )}
+                          {t.account}
+                        </td>
+                        <td className="p-4">
+                          <span className="bg-slate-100 text-slate-600 text-xs px-2.5 py-1 rounded-md font-medium">
+                            {t.category}
                           </span>
-                        )}
-                        {t.recurringInfo && (
-                          <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-semibold mt-0.5">
-                            <Repeat className="w-3 h-3" />
-                            {t.recurringInfo}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-4 text-slate-600 text-xs font-medium flex items-center gap-1.5">
-                        {t.creditCardId ? (
-                          <CreditCard className="w-3.5 h-3.5 text-indigo-500" />
-                        ) : (
-                          <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                        )}
-                        {t.account}
-                      </td>
-                      <td className="p-4">
-                        <span className="bg-slate-100 text-slate-600 text-xs px-2.5 py-1 rounded-md font-medium">
-                          {t.category}
-                        </span>
-                      </td>
-                      <td className="p-4 text-slate-500 font-medium">{t.dueDate || t.date}</td>
-                      <td className={`p-4 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {t.type === 'income' ? '+' : '-'} R$ {t.amount.toFixed(2)}
-                      </td>
-                      <td className="p-4 text-center">
-                        <button
-                          onClick={() => confirmDelete(t.id)}
-                          className="text-slate-400 hover:text-rose-600 transition p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer inline-flex items-center gap-1 text-xs font-medium"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          <span>Excluir</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="p-4 text-slate-500 font-medium">{t.dueDate || t.date}</td>
+                        <td className={`p-4 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {t.type === 'income' ? '+' : '-'} R$ {t.amount.toFixed(2)}
+                        </td>
+                        <td className="p-4 text-center">
+                          <button
+                            onClick={() => confirmDelete(t)}
+                            className="text-slate-400 hover:text-rose-600 transition p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer inline-flex items-center gap-1 text-xs font-medium"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span>Excluir</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -811,6 +926,188 @@ export default function App() {
 
       </div>
 
+      {/* MODAL DA LIXEIRA (SOFT DELETE) */}
+      {isTrashModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Trash className="w-5 h-5 text-rose-600" />
+                Lixeira de Lançamentos (Soft Delete)
+              </h3>
+              <button
+                onClick={() => setIsTrashModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200">
+                    <th className="p-3">Descrição</th>
+                    <th className="p-3">Categoria</th>
+                    <th className="p-3">Vencimento</th>
+                    <th className="p-3">Valor</th>
+                    <th className="p-3 text-center">Restaurar</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {trashedTransactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-slate-400">
+                        A lixeira está vazia. Nenhum registro excluído recentemente.
+                      </td>
+                    </tr>
+                  ) : (
+                    trashedTransactions.map(t => (
+                      <tr key={t.id} className="hover:bg-slate-50 transition">
+                        <td className="p-3 font-medium text-slate-800">{t.description}</td>
+                        <td className="p-3 text-slate-600">{t.category}</td>
+                        <td className="p-3 text-slate-500">{t.dueDate || t.date}</td>
+                        <td className={`p-3 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          R$ {t.amount.toFixed(2)}
+                        </td>
+                        <td className="p-3 text-center">
+                          <button
+                            onClick={() => restoreFromTrash(t.id)}
+                            className="flex items-center gap-1 mx-auto bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Restaurar</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsTrashModalOpen(false)}
+                className="px-5 py-2 text-sm font-medium bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition cursor-pointer"
+              >
+                Fechar Lixeira
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO (PARCELADO / RECORRENTE / ÚNICO) */}
+      {isDeleteModalOpen && transactionToDelete && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200">
+            <div className="mx-auto w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            
+            <div className="space-y-2 text-center">
+              <h3 className="text-lg font-bold text-slate-900">Excluir Lançamento</h3>
+              <p className="text-sm text-slate-500">
+                Você está prestes a enviar para a lixeira: <strong className="text-slate-800">{transactionToDelete.description}</strong> (R$ {transactionToDelete.amount.toFixed(2)})
+              </p>
+            </div>
+
+            {transactionToDelete.installmentGroup && (
+              <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+                <span className="font-bold text-slate-700 block uppercase">Opções para Parcelamento / Recorrência:</span>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="delOpt" 
+                    checked={deleteOption === 'single'} 
+                    onChange={() => setDeleteOption('single')} 
+                  />
+                  <span>Excluir somente esta parcela/lançamento</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="delOpt" 
+                    checked={deleteOption === 'forward'} 
+                    onChange={() => setDeleteOption('forward')} 
+                  />
+                  <span>Excluir este e os próximos lançamentos</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="delOpt" 
+                    checked={deleteOption === 'all'} 
+                    onChange={() => setDeleteOption('all')} 
+                  />
+                  <span>Excluir todas as parcelas / histórico completo</span>
+                </label>
+              </div>
+            )}
+
+            <div className="flex justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer border border-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={executeSoftDelete}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition shadow-sm cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Confirmar Exclusão</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO EM LOTE */}
+      {isBatchDeleteModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200 text-center">
+            <div className="mx-auto w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-slate-900">Confirmação de Exclusão em Lote</h3>
+              <p className="text-sm text-slate-500">
+                Você selecionou <strong className="text-slate-800">{selectedTransactionIds.length}</strong> lançamento(s) para exclusão.
+              </p>
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 font-bold text-rose-600 text-base">
+                Valor Total Envolvido: R$ {batchTotalAmount.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="flex justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsBatchDeleteModalOpen(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer border border-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={executeBatchDelete}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition shadow-sm cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Sim, Excluir Todos</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE METAS */}
       {isBudgetModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -863,6 +1160,7 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL DE CADASTROS */}
       {isManageModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -997,6 +1295,7 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL DE NOVO LANÇAMENTO */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -1212,40 +1511,6 @@ export default function App() {
         </div>
       )}
 
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-6 relative border border-slate-200 text-center">
-            <div className="mx-auto w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            
-            <div className="space-y-2">
-              <h3 className="text-lg font-bold text-slate-900">Confirmar Exclusão</h3>
-              <p className="text-sm text-slate-500">
-                Tem certeza que deseja remover este lançamento?
-              </p>
-            </div>
-
-            <div className="flex justify-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsDeleteModalOpen(false)}
-                className="flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer border border-slate-200"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteTransaction}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition shadow-sm cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Sim, Excluir</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
