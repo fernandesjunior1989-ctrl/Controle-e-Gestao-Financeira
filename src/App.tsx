@@ -29,7 +29,7 @@ interface Transaction {
   recurringInfo?: string;
   installmentGroup?: string;
   deletedAt?: string;
-  auditHistory?: string[]; // Histórico de auditoria de alterações
+  auditHistory?: string[];
 }
 
 interface InvoicePayment {
@@ -116,7 +116,7 @@ export default function App() {
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
-  // Estados de edição por competência e tipo (despesa <-> receita)
+  // Estados de edição por competência
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editScope, setEditScope] = useState<'single' | 'forward'>('single');
@@ -141,7 +141,7 @@ export default function App() {
   const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
 
-  // Novo Lançamento
+  // Novo Lançamento & Modalidades de Parcelamento
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Outros');
   const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
@@ -151,7 +151,9 @@ export default function App() {
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [launchMode, setLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
+  const [installmentModeType, setInstallmentModeType] = useState<'divide' | 'repeat'>('divide');
   const [installmentsCount, setInstallmentsCount] = useState('12');
+
   const [recurrencePeriod, setRecurrencePeriod] = useState<string>('Mensal');
   const [recurrenceEndType, setRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
   const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
@@ -384,6 +386,7 @@ export default function App() {
     return targetDueDate.toISOString().split('T')[0];
   };
 
+  // ADIÇÃO DE LANÇAMENTO COM SUPORTE ÀS DUAS MODALIDADES DE PARCELAMENTO (REGRA 10)
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!description || !amount) return;
@@ -399,35 +402,75 @@ export default function App() {
 
     if (launchMode === 'installment') {
       const totalParts = parseInt(installmentsCount);
-      const installmentValue = baseAmount / totalParts;
 
-      for (let i = 1; i <= totalParts; i++) {
-        let dueDate = purchaseDate;
-        
-        if (selectedCard) {
-          dueDate = calculateInvoiceDueDate(purchaseDate, selectedCard, i - 1);
-        } else {
-          const d = new Date(purchaseDate + 'T00:00:00');
-          d.setMonth(d.getMonth() + (i - 1));
-          dueDate = d.toISOString().split('T')[0];
+      if (installmentModeType === 'divide') {
+        // Modalidade 1: Divide o valor total pelas parcelas (ajustando centavos na última parcela)
+        const exactPartVal = baseAmount / totalParts;
+        let accumulated = 0;
+
+        for (let i = 1; i <= totalParts; i++) {
+          let dueDate = purchaseDate;
+          if (selectedCard) {
+            dueDate = calculateInvoiceDueDate(purchaseDate, selectedCard, i - 1);
+          } else {
+            const d = new Date(purchaseDate + 'T00:00:00');
+            d.setMonth(d.getMonth() + (i - 1));
+            dueDate = d.toISOString().split('T')[0];
+          }
+
+          let currentPartVal = parseFloat(exactPartVal.toFixed(2));
+          if (i === totalParts) {
+            currentPartVal = parseFloat((baseAmount - accumulated).toFixed(2));
+          } else {
+            accumulated += currentPartVal;
+          }
+
+          const installmentTransaction: Transaction = {
+            id: crypto.randomUUID(),
+            description: `${description} (${i}/${totalParts})`,
+            category: category || categories[0],
+            account: accountName,
+            creditCardId: selectedCardId,
+            date: purchaseDate,
+            dueDate: dueDate,
+            amount: currentPartVal,
+            type,
+            status: 'pending',
+            installmentInfo: `Parcela ${i}/${totalParts}`,
+            installmentGroup: groupId,
+            auditHistory: [`Criado em ${new Date().toLocaleString()}`]
+          };
+          newTransactionsList.unshift(installmentTransaction);
         }
+      } else {
+        // Modalidade 2: Repete o valor informado em cada parcela
+        for (let i = 1; i <= totalParts; i++) {
+          let dueDate = purchaseDate;
+          if (selectedCard) {
+            dueDate = calculateInvoiceDueDate(purchaseDate, selectedCard, i - 1);
+          } else {
+            const d = new Date(purchaseDate + 'T00:00:00');
+            d.setMonth(d.getMonth() + (i - 1));
+            dueDate = d.toISOString().split('T')[0];
+          }
 
-        const installmentTransaction: Transaction = {
-          id: crypto.randomUUID(),
-          description: `${description} (${i}/${totalParts})`,
-          category: category || categories[0],
-          account: accountName,
-          creditCardId: selectedCardId,
-          date: purchaseDate,
-          dueDate: dueDate,
-          amount: parseFloat(installmentValue.toFixed(2)),
-          type,
-          status: 'pending',
-          installmentInfo: `Parcela ${i}/${totalParts}`,
-          installmentGroup: groupId,
-          auditHistory: [`Criado em ${new Date().toLocaleString()}`]
-        };
-        newTransactionsList.unshift(installmentTransaction);
+          const installmentTransaction: Transaction = {
+            id: crypto.randomUUID(),
+            description: `${description} (${i}/${totalParts})`,
+            category: category || categories[0],
+            account: accountName,
+            creditCardId: selectedCardId,
+            date: purchaseDate,
+            dueDate: dueDate,
+            amount: baseAmount,
+            type,
+            status: 'pending',
+            installmentInfo: `Parcela ${i}/${totalParts}`,
+            installmentGroup: groupId,
+            auditHistory: [`Criado em ${new Date().toLocaleString()}`]
+          };
+          newTransactionsList.unshift(installmentTransaction);
+        }
       }
     } else if (launchMode === 'recurring') {
       const baseDateObj = new Date(purchaseDate + 'T00:00:00');
@@ -538,7 +581,6 @@ export default function App() {
     }));
   };
 
-  // Edição por Competência & Alteração de Tipo (Despesa <-> Receita)
   const openEditModal = (t: Transaction) => {
     setEditingTransaction(t);
     setEditDescription(t.description);
@@ -554,7 +596,6 @@ export default function App() {
     e.preventDefault();
     if (!editingTransaction) return;
 
-    // Se houve mudança de natureza (despesa <-> receita), exige confirmação conforme regra 9
     if (editingTransaction.type !== editType) {
       setIsNatureChangeConfirmOpen(true);
       return;
@@ -599,7 +640,6 @@ export default function App() {
     setEditingTransaction(null);
   };
 
-  // Exclusão Lógica
   const confirmDelete = (transaction: Transaction) => {
     setTransactionToDelete(transaction);
     setDeleteOption('single');
@@ -686,7 +726,7 @@ export default function App() {
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Módulo de Alteração de Natureza por Competência e Fluxo de Caixa</p>
+            <p className="text-sm text-slate-500">Módulo de Parcelamentos Avançados e Modalidades Inteligentes</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1207,7 +1247,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE EDIÇÃO POR COMPETÊNCIA E TIPO (DESPESA <-> RECEITA) */}
+      {/* MODAL DE EDIÇÃO POR COMPETÊNCIA */}
       {isEditModalOpen && editingTransaction && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200">
@@ -1320,7 +1360,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO DE MUDANÇA DE NATUREZA (REGRA 9) */}
+      {/* MODAL DE CONFIRMAÇÃO DE MUDANÇA DE NATUREZA */}
       {isNatureChangeConfirmOpen && editingTransaction && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200 text-center">
@@ -1709,7 +1749,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE NOVO LANÇAMENTO */}
+      {/* MODAL DE NOVO LANÇAMENTO COM AS 2 MODALIDADES DE PARCELAMENTO (REGRA 10) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -1744,7 +1784,7 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Valor (R$)
+                    {launchMode === 'installment' && installmentModeType === 'divide' ? 'Valor Total da Compra (R$)' : 'Valor (R$)'}
                   </label>
                   <input
                     type="number"
@@ -1814,7 +1854,7 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Data Inicial
+                    Data Inicial (1ª Parcela)
                   </label>
                   <input
                     type="date"
@@ -1842,17 +1882,48 @@ export default function App() {
               </div>
 
               {launchMode === 'installment' && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                  <label className="block text-xs font-semibold uppercase text-slate-500">Quantidade de Parcelas</label>
-                  <select
-                    value={installmentsCount}
-                    onChange={(e) => setInstallmentsCount(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
-                  >
-                    {Array.from({ length: 359 }, (_, i) => i + 2).map(num => (
-                      <option key={num} value={num}>{num}x vezes</option>
-                    ))}
-                  </select>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Modalidade de Parcelamento</label>
+                    <select
+                      value={installmentModeType}
+                      onChange={(e) => setInstallmentModeType(e.target.value as any)}
+                      className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white font-medium"
+                    >
+                      <option value="divide">Modalidade 1 – Dividir valor total pelas parcelas</option>
+                      <option value="repeat">Modalidade 2 – Repetir valor informado em cada parcela</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Quantidade de Parcelas</label>
+                    <select
+                      value={installmentsCount}
+                      onChange={(e) => setInstallmentsCount(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
+                    >
+                      {Array.from({ length: 359 }, (_, i) => i + 2).map(num => (
+                        <option key={num} value={num}>{num}x vezes</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {amount && !isNaN(parseFloat(amount)) && (
+                    <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs text-indigo-900 space-y-1">
+                      {installmentModeType === 'divide' ? (
+                        <>
+                          <div>Valor Total: <strong>R$ {parseFloat(amount).toFixed(2)}</strong></div>
+                          <div>Resultado: <strong>{installmentsCount}x de R$ {(parseFloat(amount) / parseInt(installmentsCount)).toFixed(2)}</strong></div>
+                        </>
+                      ) : (
+                        <>
+                          <div>Valor de cada parcela: <strong>R$ {parseFloat(amount).toFixed(2)}</strong></div>
+                          <div>Quantidade: <strong>{installmentsCount}x</strong></div>
+                          <div>Valor total do compromisso: <strong>R$ {(parseFloat(amount) * parseInt(installmentsCount)).toFixed(2)}</strong></div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
