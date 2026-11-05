@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard, Settings, Tag
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard, Settings, Tag, Repeat, Layers
 } from 'lucide-react';
 
 interface Transaction {
@@ -13,6 +13,7 @@ interface Transaction {
   amount: number;
   type: 'income' | 'expense';
   status: 'paid' | 'pending';
+  installmentInfo?: string; // Ex: "Parcela 1/12" ou "Recorrente Mensal"
 }
 
 export default function App() {
@@ -31,22 +32,24 @@ export default function App() {
         date: '2026-06-01',
         amount: 4500.00,
         type: 'income',
-        status: 'paid'
+        status: 'paid',
+        installmentInfo: 'Recorrente Mensal'
       },
       {
         id: '2',
-        description: 'Supermercado Mensal',
-        category: 'Alimentação',
+        description: 'Compra Notebook (Parcela 1/5)',
+        category: 'Outros',
         account: 'Cartão Nubank',
         date: '2026-06-03',
-        amount: 850.00,
+        amount: 600.00,
         type: 'expense',
-        status: 'paid'
+        status: 'paid',
+        installmentInfo: 'Parcela 1/5'
       }
     ];
   });
 
-  // Categorias personalizáveis cadastradas pelo usuário
+  // Categorias personalizáveis
   const [categories, setCategories] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_categories');
     if (saved) {
@@ -55,7 +58,7 @@ export default function App() {
     return ['Alimentação', 'Habitação', 'Transporte', 'Saúde', 'Lazer', 'Trabalho', 'Serviços', 'Outros'];
   });
 
-  // Contas / Cartões personalizados cadastrados pelo usuário
+  // Contas / Cartões personalizados
   const [accounts, setAccounts] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_accounts');
     if (saved) {
@@ -66,7 +69,7 @@ export default function App() {
 
   // Estados dos Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isManageModalOpen, setIsManageModalOpen] = useState(false); // Modal para gerenciar Contas e Categorias
+  const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
 
@@ -79,7 +82,12 @@ export default function App() {
   const [status, setStatus] = useState<'paid' | 'pending'>('paid');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Estados para Inputs de Novo Cadastro (Conta e Categoria)
+  // Novos campos para Recorrência e Parcelamento
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [isInstallment, setIsInstallment] = useState(false);
+  const [installmentsCount, setInstallmentsCount] = useState('2');
+
+  // Estados para Inputs de Novo Cadastro
   const [newAccountInput, setNewAccountInput] = useState('');
   const [newCategoryInput, setNewCategoryInput] = useState('');
 
@@ -115,7 +123,7 @@ export default function App() {
     .filter(t => t.type === 'expense' && t.status === 'pending')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  // Gastos por Categoria (para o gráfico)
+  // Gastos por Categoria
   const expensesByCategory = categories.map(cat => {
     const totalCat = transactions
       .filter(t => t.category === cat && t.type === 'expense')
@@ -132,25 +140,62 @@ export default function App() {
     return matchesType && matchesCategory;
   });
 
-  // Ações de Transação
+  // Ações de Transação (com suporte a parcelas e recorrência)
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!description || !amount) return;
 
-    const newTransaction: Transaction = {
-      id: crypto.randomUUID(),
-      description,
-      category: category || categories[0],
-      account: account || accounts[0],
-      date,
-      amount: parseFloat(amount),
-      type,
-      status
-    };
+    const baseAmount = parseFloat(amount);
+    let newTransactionsList = [...transactions];
 
-    setTransactions([newTransaction, ...transactions]);
+    if (isInstallment && parseInt(installmentsCount) > 1) {
+      const totalParts = parseInt(installmentsCount);
+      const installmentValue = baseAmount / totalParts;
+      const baseDateObj = new Date(date + 'T00:00:00');
+
+      for (let i = 1; i <= totalParts; i++) {
+        // Incrementa o mês para cada parcela
+        const currentMonthDate = new Date(baseDateObj);
+        currentMonthDate.setMonth(baseDateObj.getMonth() + (i - 1));
+        const formattedDate = currentMonthDate.toISOString().split('T')[0];
+
+        const installmentTransaction: Transaction = {
+          id: crypto.randomUUID(),
+          description: `${description} (${i}/${totalParts})`,
+          category: category || categories[0],
+          account: account || accounts[0],
+          date: formattedDate,
+          amount: parseFloat(installmentValue.toFixed(2)),
+          type,
+          status: i === 1 ? status : 'pending', // Primeira paga/pendente conforme escolha, o resto pendente
+          installmentInfo: `Parcela ${i}/${totalParts}`
+        };
+        newTransactionsList.unshift(installmentTransaction);
+      }
+    } else {
+      let info = undefined;
+      if (isRecurring) info = 'Recorrente Mensal';
+
+      const singleTransaction: Transaction = {
+        id: crypto.randomUUID(),
+        description,
+        category: category || categories[0],
+        account: account || accounts[0],
+        date,
+        amount: baseAmount,
+        type,
+        status,
+        installmentInfo: info
+      };
+      newTransactionsList.unshift(singleTransaction);
+    }
+
+    setTransactions(newTransactionsList);
     setDescription('');
     setAmount('');
+    setIsRecurring(false);
+    setIsInstallment(false);
+    setInstallmentsCount('2');
     setIsModalOpen(false);
   };
 
@@ -176,7 +221,7 @@ export default function App() {
     }
   };
 
-  // Funções de Cadastro Personalizado
+  // Funções de Cadastro
   const handleAddAccount = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAccountInput.trim() || accounts.includes(newAccountInput.trim())) return;
@@ -215,7 +260,7 @@ export default function App() {
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Painel Completo — Gestão de Contas, Cartões e Categorias</p>
+            <p className="text-sm text-slate-500">Painel Completo — Parcelamentos e Lançamentos Recorrentes</p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -229,7 +274,7 @@ export default function App() {
               onClick={() => setIsModalOpen(true)}
               className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-medium transition shadow-sm cursor-pointer text-sm"
             >
-              <PlusCircle className="w-4 h-4" />
+              <PlusCircle className="w-5 h-5" />
               <span>Novo Lançamento</span>
             </button>
           </div>
@@ -356,7 +401,7 @@ export default function App() {
               <thead>
                 <tr className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200">
                   <th className="p-4">Status</th>
-                  <th className="p-4">Descrição</th>
+                  <th className="p-4">Descrição / Detalhes</th>
                   <th className="p-4">Conta / Cartão</th>
                   <th className="p-4">Categoria</th>
                   <th className="p-4">Data</th>
@@ -387,7 +432,15 @@ export default function App() {
                           <span>{t.status === 'paid' ? 'Pago' : 'Pendente'}</span>
                         </button>
                       </td>
-                      <td className="p-4 font-medium text-slate-800">{t.description}</td>
+                      <td className="p-4">
+                        <div className="font-medium text-slate-800">{t.description}</div>
+                        {t.installmentInfo && (
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-semibold mt-0.5">
+                            {t.installmentInfo.includes('Parcela') ? <Layers className="w-3 h-3" /> : <Repeat className="w-3 h-3" />}
+                            {t.installmentInfo}
+                          </span>
+                        )}
+                      </td>
                       <td className="p-4 text-slate-600 text-xs font-medium flex items-center gap-1.5">
                         {t.account.toLowerCase().includes('cartão') ? (
                           <CreditCard className="w-3.5 h-3.5 text-indigo-500" />
@@ -424,7 +477,7 @@ export default function App() {
 
       </div>
 
-      {/* Modal de Gestão de Contas e Categorias (Cadastros) */}
+      {/* Modal de Gestão de Cadastros */}
       {isManageModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-6 relative border border-slate-200">
@@ -442,8 +495,6 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Gerir Contas / Cartões */}
               <div className="space-y-4 border border-slate-200 p-4 rounded-xl">
                 <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
                   <CreditCard className="w-4 h-4 text-indigo-600" />
@@ -473,7 +524,6 @@ export default function App() {
                       <button
                         onClick={() => handleDeleteAccount(acc)}
                         className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
-                        title="Excluir Conta"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -482,7 +532,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Gerir Categorias */}
               <div className="space-y-4 border border-slate-200 p-4 rounded-xl">
                 <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
                   <Tag className="w-4 h-4 text-emerald-600" />
@@ -512,7 +561,6 @@ export default function App() {
                       <button
                         onClick={() => handleDeleteCategory(cat)}
                         className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
-                        title="Excluir Categoria"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -520,7 +568,6 @@ export default function App() {
                   ))}
                 </div>
               </div>
-
             </div>
 
             <div className="flex justify-end pt-2 border-t border-slate-100">
@@ -536,10 +583,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal de Novo Lançamento */}
+      {/* Modal de Novo Lançamento (Com Parcelamento e Recorrência) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5 relative border border-slate-200">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b pb-3 border-slate-100">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <PlusCircle className="w-5 h-5 text-emerald-600" />
@@ -561,7 +608,7 @@ export default function App() {
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Fatura Cartão, Consultoria..."
+                  placeholder="Ex: Compra Parcelada, Aluguel..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -571,7 +618,7 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Valor (R$)
+                    Valor Total (R$)
                   </label>
                   <input
                     type="number"
@@ -634,7 +681,7 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Data
+                    Data (Primeiro Vencimento)
                   </label>
                   <input
                     type="date"
@@ -647,7 +694,7 @@ export default function App() {
 
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Status
+                    Status Inicial
                   </label>
                   <select
                     value={status}
@@ -657,6 +704,58 @@ export default function App() {
                     <option value="paid">Realizado (Pago)</option>
                     <option value="pending">Pendente (A Pagar)</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Opções de Parcelamento e Recorrência */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isInstallment}
+                      onChange={(e) => {
+                        setIsInstallment(e.target.checked);
+                        if (e.target.checked) setIsRecurring(false);
+                      }}
+                      className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
+                    />
+                    <span>Parcelar Lançamento</span>
+                  </label>
+                  <Layers className="w-4 h-4 text-slate-400" />
+                </div>
+
+                {isInstallment && (
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                      Número de Parcelas
+                    </label>
+                    <select
+                      value={installmentsCount}
+                      onChange={(e) => setInstallmentsCount(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      {[2, 3, 4, 5, 6, 10, 12, 18, 24, 36, 48].map(num => (
+                        <option key={num} value={num}>{num}x vezes</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isRecurring}
+                      onChange={(e) => {
+                        setIsRecurring(e.target.checked);
+                        if (e.target.checked) setIsInstallment(false);
+                      }}
+                      className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
+                    />
+                    <span>Lançamento Recorrente Mensal</span>
+                  </label>
+                  <Repeat className="w-4 h-4 text-slate-400" />
                 </div>
               </div>
 
