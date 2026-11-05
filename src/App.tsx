@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, CheckCheck, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, CheckCheck, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -28,7 +28,17 @@ interface Transaction {
   installmentInfo?: string;
   recurringInfo?: string;
   installmentGroup?: string;
-  deletedAt?: string; // Para Soft Delete / Lixeira
+  deletedAt?: string;
+}
+
+interface InvoicePayment {
+  id: string;
+  cardId: string;
+  monthKey: string; // ex: "2026-11"
+  amountPaid: number;
+  paymentDate: string;
+  account: string;
+  interestAndFees: number; // Juros, multa, IOF
 }
 
 interface CategoryBudget {
@@ -67,6 +77,14 @@ export default function App() {
     return [];
   });
 
+  const [invoicePayments, setInvoicePayments] = useState<InvoicePayment[]>(() => {
+    const saved = localStorage.getItem('@controle_financeiro_invoice_payments');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+
   const [categories] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_categories');
     if (saved) {
@@ -95,8 +113,24 @@ export default function App() {
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
-  
-  // Modais de exclusão avançados
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+  // Estados de edição por competência
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editScope, setEditScope] = useState<'single' | 'forward'>('single');
+  const [editDescription, setEditDescription] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+
+  // Estados de Pagamento de Fatura Flexível
+  const [paymentAmountInput, setPaymentAmountInput] = useState('');
+  const [paymentFeesInput, setPaymentFeesInput] = useState('0');
+  const [paymentAccount, setPaymentAccount] = useState('Banco do Brasil');
+  const [paymentDateInput, setPaymentDateInput] = useState(new Date().toISOString().split('T')[0]);
+
+  // Exclusão
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
   const [deleteOption, setDeleteOption] = useState<'single' | 'forward' | 'all'>('single');
@@ -104,6 +138,7 @@ export default function App() {
   const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
 
+  // Formulário Novo Lançamento
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Outros');
   const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
@@ -119,7 +154,6 @@ export default function App() {
   const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
 
   const [tempBudgets, setTempBudgets] = useState<CategoryBudget>(budgets);
-
   const [newCardName, setNewCardName] = useState('');
   const [newCardBank, setNewCardBank] = useState('');
   const [newCardLimit, setNewCardLimit] = useState('');
@@ -134,6 +168,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('@controle_financeiro_transactions', JSON.stringify(transactions));
   }, [transactions]);
+
+  useEffect(() => {
+    localStorage.setItem('@controle_financeiro_invoice_payments', JSON.stringify(invoicePayments));
+  }, [invoicePayments]);
 
   useEffect(() => {
     localStorage.setItem('@controle_financeiro_categories', JSON.stringify(categories));
@@ -161,9 +199,9 @@ export default function App() {
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
+  const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
   const monthName = currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
 
-  // Apenas transações ativas (não deletadas na lixeira)
   const activeTransactions = transactions.filter(t => !t.deletedAt);
   const trashedTransactions = transactions.filter(t => t.deletedAt);
 
@@ -204,6 +242,34 @@ export default function App() {
     return { name: pName, income: pIncome, expense: pExpense, balance: pBalance };
   });
 
+  // Cálculo de Saldo Anterior Transportado para Faturas de Cartão
+  const getBroughtForwardBalance = (cardId: string, targetYear: number, targetMonth: number) => {
+    // Calcula faturas anteriores e pagamentos anteriores para apurar saldo não pago que transita
+    let prevYear = targetYear;
+    let prevMonth = targetMonth - 1;
+    if (prevMonth < 0) {
+      prevMonth = 11;
+      prevYear -= 1;
+    }
+    const prevMonthKey = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}`;
+
+    const prevTxs = activeTransactions.filter(t => {
+      if (t.creditCardId !== cardId) return false;
+      const d = new Date((t.dueDate || t.date) + 'T00:00:00');
+      return d.getFullYear() === prevYear && d.getMonth() === prevMonth;
+    });
+    const prevTotal = prevTxs.reduce((acc, t) => acc + t.amount, 0);
+    const prevPayments = invoicePayments
+      .filter(p => p.cardId === cardId && p.monthKey === prevMonthKey)
+      .reduce((acc, p) => acc + p.amountPaid, 0);
+
+    const diff = prevTotal - prevPayments;
+    return diff > 0 ? diff : 0;
+  };
+
+  const activeCard = creditCards.find(c => c.id === selectedCardView) || creditCards[0];
+  const broughtForward = activeCard ? getBroughtForwardBalance(activeCard.id, currentYear, currentMonth) : 0;
+
   const getCardLimitDetails = (cardId: string) => {
     const card = creditCards.find(c => c.id === cardId);
     if (!card) return { total: 0, used: 0, available: 0 };
@@ -214,22 +280,65 @@ export default function App() {
 
     return {
       total: card.totalLimit,
-      used,
-      available: card.totalLimit - used
+      used: used + broughtForward,
+      available: card.totalLimit - (used + broughtForward)
     };
   };
 
-  const handlePayInvoice = (cardId: string) => {
-    const updated = transactions.map(t => {
-      if (!t.deletedAt && t.creditCardId === cardId && t.status === 'pending') {
-        const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
-        if (targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth) {
-          return { ...t, status: 'paid' as const };
-        }
-      }
-      return t;
-    });
-    setTransactions(updated);
+  const activeCardLimit = activeCard ? getCardLimitDetails(activeCard.id) : null;
+  const activeCardMonthTransactions = activeCard 
+    ? monthTransactions.filter(t => t.creditCardId === activeCard.id) 
+    : [];
+
+  const invoiceMonthTotal = activeCardMonthTransactions.reduce((acc, t) => acc + t.amount, 0) + broughtForward;
+  const cardPaymentsThisMonth = activeCard ? invoicePayments.filter(p => p.cardId === activeCard.id && p.monthKey === monthKey) : [];
+  const totalPaidThisMonth = cardPaymentsThisMonth.reduce((acc, p) => acc + p.amountPaid, 0);
+  const totalFeesThisMonth = cardPaymentsThisMonth.reduce((acc, p) => acc + p.interestAndFees, 0);
+  const pendingInvoiceMonthTotal = Math.max(0, (invoiceMonthTotal + totalFeesThisMonth) - totalPaidThisMonth);
+
+  const invoiceStatus = pendingInvoiceMonthTotal === 0 
+    ? 'Paga' 
+    : totalPaidThisMonth > 0 
+    ? 'Parcialmente Paga' 
+    : 'Aberta';
+
+  // Executar Pagamento Flexível de Fatura
+  const handleExecuteInvoicePayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeCard) return;
+    const paidVal = parseFloat(paymentAmountInput);
+    const feesVal = parseFloat(paymentFeesInput) || 0;
+    if (isNaN(paidVal) || paidVal <= 0) return;
+
+    const newPayment: InvoicePayment = {
+      id: crypto.randomUUID(),
+      cardId: activeCard.id,
+      monthKey,
+      amountPaid: paidVal,
+      paymentDate: paymentDateInput,
+      account: paymentAccount,
+      interestAndFees: feesVal
+    };
+
+    setInvoicePayments([...invoicePayments, newPayment]);
+
+    // O pagamento gera uma despesa/saída na conta bancária selecionada sem duplicar no caixa de compras
+    const bankExpenseTransaction: Transaction = {
+      id: crypto.randomUUID(),
+      description: `Pagamento Fatura ${activeCard.name} (${monthName})`,
+      category: 'Serviços',
+      account: paymentAccount,
+      date: paymentDateInput,
+      dueDate: paymentDateInput,
+      amount: paidVal + feesVal,
+      type: 'expense',
+      status: 'paid'
+    };
+    setTransactions([bankExpenseTransaction, ...transactions]);
+
+    setPaymentAmountInput('');
+    setPaymentFeesInput('0');
+    setIsPaymentModalOpen(false);
   };
 
   const exportToCSV = () => {
@@ -427,7 +536,51 @@ export default function App() {
     }));
   };
 
-  // Funções de Exclusão Lógica (Soft Delete) e Gestão por Grupo
+  // Edição por Competência (independência entre meses)
+  const openEditModal = (t: Transaction) => {
+    setEditingTransaction(t);
+    setEditDescription(t.description);
+    setEditAmount(t.amount.toString());
+    setEditCategory(t.category);
+    setEditDueDate(t.dueDate || t.date);
+    setEditScope('single');
+    setIsEditModalOpen(true);
+  };
+
+  const executeEditTransaction = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTransaction) return;
+    const newAmt = parseFloat(editAmount);
+    if (isNaN(newAmt)) return;
+
+    const targetGroup = editingTransaction.installmentGroup;
+
+    setTransactions(transactions.map(t => {
+      if (t.id === editingTransaction.id) {
+        return {
+          ...t,
+          description: editDescription,
+          amount: newAmt,
+          category: editCategory,
+          dueDate: editDueDate
+        };
+      }
+      if (editScope === 'forward' && targetGroup && t.installmentGroup === targetGroup && t.dueDate > editingTransaction.dueDate) {
+        return {
+          ...t,
+          description: editDescription,
+          amount: newAmt,
+          category: editCategory
+        };
+      }
+      return t;
+    }));
+
+    setIsEditModalOpen(false);
+    setEditingTransaction(null);
+  };
+
+  // Exclusão Lógica (Soft Delete)
   const confirmDelete = (transaction: Transaction) => {
     setTransactionToDelete(transaction);
     setDeleteOption('single');
@@ -437,7 +590,6 @@ export default function App() {
   const executeSoftDelete = () => {
     if (!transactionToDelete) return;
     const nowIso = new Date().toISOString();
-
     const targetGroup = transactionToDelete.installmentGroup;
 
     setTransactions(transactions.map(t => {
@@ -459,7 +611,6 @@ export default function App() {
     setTransactionToDelete(null);
   };
 
-  // Exclusão em Lote
   const toggleSelectAll = () => {
     if (selectedTransactionIds.length === filteredTransactions.length) {
       setSelectedTransactionIds([]);
@@ -488,7 +639,6 @@ export default function App() {
     setIsBatchDeleteModalOpen(false);
   };
 
-  // Restaurar da Lixeira
   const restoreFromTrash = (id: string) => {
     setTransactions(transactions.map(t => {
       if (t.id === id) {
@@ -505,17 +655,6 @@ export default function App() {
     return matchesType && matchesCategory;
   });
 
-  const activeCard = creditCards.find(c => c.id === selectedCardView) || creditCards[0];
-  const activeCardLimit = activeCard ? getCardLimitDetails(activeCard.id) : null;
-  const activeCardMonthTransactions = activeCard 
-    ? monthTransactions.filter(t => t.creditCardId === activeCard.id) 
-    : [];
-
-  const invoiceMonthTotal = activeCardMonthTransactions.reduce((acc, t) => acc + t.amount, 0);
-  const pendingInvoiceMonthTotal = activeCardMonthTransactions
-    .filter(t => t.status === 'pending')
-    .reduce((acc, t) => acc + t.amount, 0);
-
   const batchTotalAmount = transactions
     .filter(t => selectedTransactionIds.includes(t.id))
     .reduce((acc, t) => acc + t.amount, 0);
@@ -528,7 +667,7 @@ export default function App() {
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Módulo de Exclusão em Lote, Lixeira (Soft Delete) e Parcelamentos</p>
+            <p className="text-sm text-slate-500">Módulo de Edição por Competência e Pagamento Flexível de Faturas</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -586,7 +725,7 @@ export default function App() {
           </button>
         </div>
 
-        {/* Cards de Resumo */}
+        {/* Resumo */}
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
@@ -657,7 +796,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* CARTÃO DE CRÉDITO */}
+        {/* FATURA DE CARTÃO COM PAGAMENTO FLEXÍVEL E SALDO TRANSPORTADO */}
         {creditCards.length > 0 && activeCard && activeCardLimit && (
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -665,7 +804,7 @@ export default function App() {
                 <CreditCard className="w-6 h-6 text-indigo-600" />
                 <div>
                   <h3 className="text-lg font-bold text-slate-900">Fatura do Cartão — {monthName}</h3>
-                  <p className="text-xs text-slate-500">Ciclo de fechamento automático e liquidação em 1 clique</p>
+                  <p className="text-xs text-slate-500">Situação: <strong className="text-indigo-700">{invoiceStatus}</strong> | Saldo anterior transportado: R$ {broughtForward.toFixed(2)}</p>
                 </div>
               </div>
 
@@ -680,33 +819,37 @@ export default function App() {
                   ))}
                 </select>
 
-                {pendingInvoiceMonthTotal > 0 && (
-                  <button
-                    onClick={() => handlePayInvoice(activeCard.id)}
-                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg font-medium text-xs transition cursor-pointer shadow-sm"
-                  >
-                    <CheckCheck className="w-4 h-4" />
-                    <span>Pagar Fatura (R$ {pendingInvoiceMonthTotal.toFixed(2)})</span>
-                  </button>
-                )}
+                <button
+                  onClick={() => { setPaymentAmountInput(pendingInvoiceMonthTotal.toFixed(2)); setIsPaymentModalOpen(true); }}
+                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium text-xs transition cursor-pointer shadow-sm"
+                >
+                  <DollarSign className="w-4 h-4" />
+                  <span>Pagar Fatura (Flexível)</span>
+                </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs font-semibold uppercase text-slate-500">Limite Total</span>
-                <h4 className="text-xl font-bold text-slate-900 mt-1">R$ {activeCardLimit.total.toFixed(2)}</h4>
-                <p className="text-[11px] text-slate-400 mt-1">Fechamento: dia {activeCard.closingDay} | Vencimento: dia {activeCard.dueDay}</p>
+                <span className="text-xs font-semibold uppercase text-slate-500">Valor Total da Fatura</span>
+                <h4 className="text-xl font-bold text-slate-900 mt-1">R$ {(invoiceMonthTotal + totalFeesThisMonth).toFixed(2)}</h4>
+                <p className="text-[11px] text-slate-400 mt-1">Inclui saldo anterior e encargos</p>
               </div>
 
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs font-semibold uppercase text-slate-500">Total Fatura do Mês</span>
-                <h4 className="text-xl font-bold text-indigo-900 mt-1">R$ {invoiceMonthTotal.toFixed(2)}</h4>
-                <p className="text-[11px] text-slate-400 mt-1">Pendente: R$ {pendingInvoiceMonthTotal.toFixed(2)}</p>
+                <span className="text-xs font-semibold uppercase text-slate-500">Total Pago</span>
+                <h4 className="text-xl font-bold text-emerald-600 mt-1">R$ {totalPaidThisMonth.toFixed(2)}</h4>
+                <p className="text-[11px] text-slate-400 mt-1">Encargos: R$ {totalFeesThisMonth.toFixed(2)}</p>
               </div>
 
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs font-semibold uppercase text-slate-500">Limite Utilizado Global</span>
+                <span className="text-xs font-semibold uppercase text-slate-500">Saldo Pendente</span>
+                <h4 className="text-xl font-bold text-rose-600 mt-1">R$ {pendingInvoiceMonthTotal.toFixed(2)}</h4>
+                <p className="text-[11px] text-slate-400 mt-1">Vai para a próxima fatura</p>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <span className="text-xs font-semibold uppercase text-slate-500">Limite Utilizado</span>
                 <h4 className="text-xl font-bold text-rose-600 mt-1">R$ {activeCardLimit.used.toFixed(2)}</h4>
                 <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-2">
                   <div 
@@ -719,9 +862,25 @@ export default function App() {
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <span className="text-xs font-semibold uppercase text-slate-500">Limite Disponível</span>
                 <h4 className="text-xl font-bold text-emerald-600 mt-1">R$ {activeCardLimit.available.toFixed(2)}</h4>
-                <p className="text-[11px] text-slate-400 mt-1">Restituído ao pagar parcelas</p>
+                <p className="text-[11px] text-slate-400 mt-1">Calculado com saldo devedor</p>
               </div>
             </div>
+
+            {cardPaymentsThisMonth.length > 0 && (
+              <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 space-y-2">
+                <span className="text-xs font-bold text-indigo-900 uppercase">Histórico de Pagamentos Realizados Nesta Fatura:</span>
+                <div className="space-y-1">
+                  {cardPaymentsThisMonth.map(p => (
+                    <div key={p.id} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-indigo-100 text-xs">
+                      <div>
+                        <span className="font-bold text-slate-800">Pago R$ {p.amountPaid.toFixed(2)}</span> via <span className="text-indigo-600 font-semibold">{p.account}</span> em {p.paymentDate}
+                        {p.interestAndFees > 0 && <span className="text-rose-600 ml-2">(Encargos/Juros: R$ {p.interestAndFees.toFixed(2)})</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         )}
 
@@ -773,7 +932,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* EXTRATO E EXCLUSÃO EM LOTE */}
+        {/* EXTRATO COM EDIÇÃO POR COMPETÊNCIA */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
           <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -906,7 +1065,14 @@ export default function App() {
                         <td className={`p-4 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
                           {t.type === 'income' ? '+' : '-'} R$ {t.amount.toFixed(2)}
                         </td>
-                        <td className="p-4 text-center">
+                        <td className="p-4 text-center space-x-2">
+                          <button
+                            onClick={() => openEditModal(t)}
+                            className="text-indigo-500 hover:text-indigo-700 transition p-1.5 rounded-lg hover:bg-indigo-50 cursor-pointer inline-flex items-center gap-1 text-xs font-medium"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                            <span>Editar</span>
+                          </button>
                           <button
                             onClick={() => confirmDelete(t)}
                             className="text-slate-400 hover:text-rose-600 transition p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer inline-flex items-center gap-1 text-xs font-medium"
@@ -926,7 +1092,209 @@ export default function App() {
 
       </div>
 
-      {/* MODAL DA LIXEIRA (SOFT DELETE) */}
+      {/* MODAL DE PAGAMENTO FLEXÍVEL DE FATURA */}
+      {isPaymentModalOpen && activeCard && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-emerald-600" />
+                Pagamento Flexível de Fatura
+              </h3>
+              <button
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteInvoicePayment} className="space-y-4">
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1">
+                <div>Cartão: <strong className="text-slate-800">{activeCard.name}</strong></div>
+                <div>Valor Total Pendente: <strong className="text-indigo-900">R$ {pendingInvoiceMonthTotal.toFixed(2)}</strong></div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Valor a Pagar (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={paymentAmountInput}
+                  onChange={(e) => setPaymentAmountInput(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
+                />
+                <span className="text-[11px] text-slate-400 mt-1 block">Permite pagamento parcial ou total. O restante transita automaticamente.</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Juros / Encargos (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={paymentFeesInput}
+                    onChange={(e) => setPaymentFeesInput(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Data Efetiva</label>
+                  <input
+                    type="date"
+                    required
+                    value={paymentDateInput}
+                    onChange={(e) => setPaymentDateInput(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Conta Bancária de Débito</label>
+                <select
+                  value={paymentAccount}
+                  onChange={(e) => setPaymentAccount(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white font-medium"
+                >
+                  {accounts.map(acc => (
+                    <option key={acc} value={acc}>{acc}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shadow-sm cursor-pointer"
+                >
+                  Confirmar Pagamento
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDIÇÃO POR COMPETÊNCIA */}
+      {isEditModalOpen && editingTransaction && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-indigo-600" />
+                Editar Lançamento (Competência)
+              </h3>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={executeEditTransaction} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Descrição</label>
+                <input
+                  type="text"
+                  required
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Valor (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Vencimento</label>
+                  <input
+                    type="date"
+                    required
+                    value={editDueDate}
+                    onChange={(e) => setEditDueDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Categoria</label>
+                <select
+                  value={editCategory}
+                  onChange={(e) => setEditCategory(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white"
+                >
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              {editingTransaction.installmentGroup && (
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1">
+                  <span className="font-bold text-slate-700 block uppercase">Escopo da Alteração:</span>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="editScope" 
+                      checked={editScope === 'single'} 
+                      onChange={() => setEditScope('single')} 
+                    />
+                    <span>Alterar somente esta competência / parcela</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="editScope" 
+                      checked={editScope === 'forward'} 
+                      onChange={() => setEditScope('forward')} 
+                    />
+                    <span>Alterar esta e as próximas</span>
+                  </label>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition shadow-sm cursor-pointer"
+                >
+                  Salvar Alteração
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DA LIXEIRA */}
       {isTrashModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -999,7 +1367,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO (PARCELADO / RECORRENTE / ÚNICO) */}
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
       {isDeleteModalOpen && transactionToDelete && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200">
@@ -1016,33 +1384,18 @@ export default function App() {
 
             {transactionToDelete.installmentGroup && (
               <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
-                <span className="font-bold text-slate-700 block uppercase">Opções para Parcelamento / Recorrência:</span>
+                <span className="font-bold text-slate-700 block uppercase">Opções de Exclusão:</span>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="radio" 
-                    name="delOpt" 
-                    checked={deleteOption === 'single'} 
-                    onChange={() => setDeleteOption('single')} 
-                  />
-                  <span>Excluir somente esta parcela/lançamento</span>
+                  <input type="radio" name="delOpt" checked={deleteOption === 'single'} onChange={() => setDeleteOption('single')} />
+                  <span>Excluir somente esta competência / parcela</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="radio" 
-                    name="delOpt" 
-                    checked={deleteOption === 'forward'} 
-                    onChange={() => setDeleteOption('forward')} 
-                  />
-                  <span>Excluir este e os próximos lançamentos</span>
+                  <input type="radio" name="delOpt" checked={deleteOption === 'forward'} onChange={() => setDeleteOption('forward')} />
+                  <span>Excluir esta e as próximas</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="radio" 
-                    name="delOpt" 
-                    checked={deleteOption === 'all'} 
-                    onChange={() => setDeleteOption('all')} 
-                  />
-                  <span>Excluir todas as parcelas / histórico completo</span>
+                  <input type="radio" name="delOpt" checked={deleteOption === 'all'} onChange={() => setDeleteOption('all')} />
+                  <span>Excluir todo o histórico</span>
                 </label>
               </div>
             )}
@@ -1068,7 +1421,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO EM LOTE */}
+      {/* MODAL DE EXCLUSÃO EM LOTE */}
       {isBatchDeleteModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200 text-center">
@@ -1079,7 +1432,7 @@ export default function App() {
             <div className="space-y-2">
               <h3 className="text-lg font-bold text-slate-900">Confirmação de Exclusão em Lote</h3>
               <p className="text-sm text-slate-500">
-                Você selecionou <strong className="text-slate-800">{selectedTransactionIds.length}</strong> lançamento(s) para exclusão.
+                Você selecionou <strong className="text-slate-800">{selectedTransactionIds.length}</strong> lançamento(s).
               </p>
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 font-bold text-rose-600 text-base">
                 Valor Total Envolvido: R$ {batchTotalAmount.toFixed(2)}
