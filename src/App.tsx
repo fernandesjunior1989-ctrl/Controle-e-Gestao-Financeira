@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, CheckCheck, Target, TrendingUp as TrendUp, Download
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, CheckCheck, Target, TrendingUp as TrendUp, Download
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -66,7 +66,7 @@ export default function App() {
     return [];
   });
 
-  const [categories, setCategories] = useState<string[]>(() => {
+  const [categories] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_categories');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -427,15 +427,6 @@ export default function App() {
       setTransactionToDelete(null);
     }
   };
-
-  const expensesByCategory = categories.map(cat => {
-    const totalCat = monthTransactions
-      .filter(t => t.category === cat && t.type === 'expense')
-      .reduce((acc, t) => acc + t.amount, 0);
-    return { category: cat, total: totalCat };
-  }).filter(item => item.total > 0);
-
-  const maxCategoryExpense = Math.max(...expensesByCategory.map(i => i.total), 1);
 
   const filteredTransactions = monthTransactions.filter(t => {
     const matchesType = selectedTypeFilter === 'all' || t.type === selectedTypeFilter;
