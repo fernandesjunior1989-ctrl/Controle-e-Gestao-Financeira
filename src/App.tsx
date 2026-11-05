@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save } from 'lucide-react';
 
 interface Transaction {
   id: string;
@@ -11,32 +11,35 @@ interface Transaction {
 }
 
 export default function App() {
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    {
-      id: '1',
-      description: 'Salário Mensal',
-      category: 'Trabalho',
-      date: '2026-06-01',
-      amount: 4500.00,
-      type: 'income'
-    },
-    {
-      id: '2',
-      description: 'Supermercado Mensal',
-      category: 'Alimentação',
-      date: '2026-06-03',
-      amount: 850.00,
-      type: 'expense'
-    },
-    {
-      id: '3',
-      description: 'Manutenção de Escritório',
-      category: 'Serviços',
-      date: '2026-06-05',
-      amount: 300.00,
-      type: 'expense'
+  // Carrega os lançamentos salvos no localStorage ou usa os padrões iniciais
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    const saved = localStorage.getItem('@controle_financeiro_transactions');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Erro ao carregar do localStorage', e);
+      }
     }
-  ]);
+    return [
+      {
+        id: '1',
+        description: 'Salário Mensal',
+        category: 'Trabalho',
+        date: '2026-06-01',
+        amount: 4500.00,
+        type: 'income'
+      },
+      {
+        id: '2',
+        description: 'Supermercado Mensal',
+        category: 'Alimentação',
+        date: '2026-06-03',
+        amount: 850.00,
+        type: 'expense'
+      }
+    ];
+  });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [description, setDescription] = useState('');
@@ -44,6 +47,11 @@ export default function App() {
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('income');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Sincroniza sempre com o localStorage ao alterar os lançamentos
+  useEffect(() => {
+    localStorage.setItem('@controle_financeiro_transactions', JSON.stringify(transactions));
+  }, [transactions]);
 
   // Cálculos dos totais
   const income = transactions
@@ -56,7 +64,7 @@ export default function App() {
 
   const total = income - expense;
 
-  // Função para adicionar lançamento
+  // Função para adicionar e gravar lançamento
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!description || !amount || !category) return;
@@ -72,7 +80,7 @@ export default function App() {
 
     setTransactions([newTransaction, ...transactions]);
     
-    // Reset do formulário
+    // Reset do formulário e fechar modal
     setDescription('');
     setCategory('');
     setAmount('');
@@ -93,7 +101,7 @@ export default function App() {
         <header className="flex justify-between items-center border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Painel Principal</p>
+            <p className="text-sm text-slate-500">Painel Principal com Gravação Automática</p>
           </div>
           <button
             onClick={() => setIsModalOpen(true)}
@@ -145,8 +153,11 @@ export default function App() {
 
         {/* Tabela de Lançamentos */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-200">
+          <div className="p-6 border-b border-slate-200 flex justify-between items-center">
             <h3 className="text-lg font-bold text-slate-900">Lançamentos Recentes</h3>
+            <span className="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-medium">
+              {transactions.length} registros gravados
+            </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -163,14 +174,18 @@ export default function App() {
                 {transactions.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="p-8 text-center text-slate-400">
-                      Nenhum lançamento encontrado.
+                      Nenhum lançamento gravado. Clique em "Novo Lançamento" acima.
                     </td>
                   </tr>
                 ) : (
                   transactions.map((t) => (
                     <tr key={t.id} className="hover:bg-slate-50/80 transition">
                       <td className="p-4 font-medium text-slate-800">{t.description}</td>
-                      <td className="p-4 text-slate-500">{t.category}</td>
+                      <td className="p-4">
+                        <span className="bg-slate-100 text-slate-600 text-xs px-2.5 py-1 rounded-md font-medium">
+                          {t.category}
+                        </span>
+                      </td>
                       <td className="p-4 text-slate-500">{t.date}</td>
                       <td className={`p-4 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {t.type === 'income' ? '+' : '-'} R$ {t.amount.toFixed(2)}
@@ -178,10 +193,11 @@ export default function App() {
                       <td className="p-4 text-center">
                         <button
                           onClick={() => handleDeleteTransaction(t.id)}
-                          className="text-slate-400 hover:text-rose-600 transition p-1 rounded cursor-pointer"
+                          className="text-slate-400 hover:text-rose-600 transition p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer inline-flex items-center gap-1 text-xs font-medium"
                           title="Excluir Lançamento"
                         >
                           <Trash2 className="w-4 h-4" />
+                          <span>Excluir</span>
                         </button>
                       </td>
                     </tr>
@@ -199,10 +215,13 @@ export default function App() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-6 relative border border-slate-200">
             <div className="flex justify-between items-center border-b pb-3 border-slate-100">
-              <h3 className="text-lg font-bold text-slate-900">Novo Lançamento</h3>
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <PlusCircle className="w-5 h-5 text-emerald-600" />
+                Novo Lançamento
+              </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -246,7 +265,7 @@ export default function App() {
                   <select
                     value={type}
                     onChange={(e) => setType(e.target.value as 'income' | 'expense')}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                   >
                     <option value="income">Receita</option>
                     <option value="expense">Despesa</option>
@@ -287,15 +306,16 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shadow-sm cursor-pointer"
                 >
-                  Salvar Lançamento
+                  <Save className="w-4 h-4" />
+                  <span>Salvar Lançamento</span>
                 </button>
               </div>
             </form>
