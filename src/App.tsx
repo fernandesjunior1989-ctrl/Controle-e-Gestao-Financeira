@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard, Settings, Repeat, Layers, Calendar
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard, Settings, Repeat, Layers, Calendar, ChevronLeft, ChevronRight, CheckCheck
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -30,6 +30,12 @@ interface Transaction {
 }
 
 export default function App() {
+  // Data de referência do filtro (Ano-Mês)
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+
   const [creditCards, setCreditCards] = useState<CreditCardAccount[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_credit_cards');
     if (saved) {
@@ -119,20 +125,41 @@ export default function App() {
     localStorage.setItem('@controle_financeiro_credit_cards', JSON.stringify(creditCards));
   }, [creditCards]);
 
-  const incomeRealized = transactions
+  // Funções de Navegação Mensal
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  };
+
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth(); // 0-11
+  const monthName = currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+
+  // Filtrar transações pertencentes ao mês/ano selecionado (baseado no dueDate ou date)
+  const monthTransactions = transactions.filter(t => {
+    const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
+    return targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth;
+  });
+
+  // Cálculos do Mês Selecionado
+  const incomeRealized = monthTransactions
     .filter(t => t.type === 'income' && t.status === 'paid')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  const expenseRealized = transactions
+  const expenseRealized = monthTransactions
     .filter(t => t.type === 'expense' && t.status === 'paid')
     .reduce((acc, t) => acc + t.amount, 0);
 
   const totalRealized = incomeRealized - expenseRealized;
 
-  const totalPendingExpense = transactions
+  const totalPendingExpense = monthTransactions
     .filter(t => t.type === 'expense' && t.status === 'pending')
     .reduce((acc, t) => acc + t.amount, 0);
 
+  // Limite por Cartão
   const getCardLimitDetails = (cardId: string) => {
     const card = creditCards.find(c => c.id === cardId);
     if (!card) return { total: 0, used: 0, available: 0 };
@@ -146,6 +173,20 @@ export default function App() {
       used,
       available: card.totalLimit - used
     };
+  };
+
+  // Pagar a fatura do cartão no mês atual
+  const handlePayInvoice = (cardId: string) => {
+    const updated = transactions.map(t => {
+      if (t.creditCardId === cardId && t.status === 'pending') {
+        const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
+        if (targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth) {
+          return { ...t, status: 'paid' as const };
+        }
+      }
+      return t;
+    });
+    setTransactions(updated);
   };
 
   const calculateInvoiceDueDate = (purchaseDateStr: string, card: CreditCardAccount, monthOffset: number = 0) => {
@@ -320,7 +361,7 @@ export default function App() {
   };
 
   const expensesByCategory = categories.map(cat => {
-    const totalCat = transactions
+    const totalCat = monthTransactions
       .filter(t => t.category === cat && t.type === 'expense')
       .reduce((acc, t) => acc + t.amount, 0);
     return { category: cat, total: totalCat };
@@ -328,7 +369,7 @@ export default function App() {
 
   const maxCategoryExpense = Math.max(...expensesByCategory.map(i => i.total), 1);
 
-  const filteredTransactions = transactions.filter(t => {
+  const filteredTransactions = monthTransactions.filter(t => {
     const matchesType = selectedTypeFilter === 'all' || t.type === selectedTypeFilter;
     const matchesCategory = selectedCategoryFilter === 'all' || t.category === selectedCategoryFilter;
     return matchesType && matchesCategory;
@@ -336,18 +377,24 @@ export default function App() {
 
   const activeCard = creditCards.find(c => c.id === selectedCardView) || creditCards[0];
   const activeCardLimit = activeCard ? getCardLimitDetails(activeCard.id) : null;
-  const activeCardTransactions = activeCard 
-    ? transactions.filter(t => t.creditCardId === activeCard.id) 
+  const activeCardMonthTransactions = activeCard 
+    ? monthTransactions.filter(t => t.creditCardId === activeCard.id) 
     : [];
+
+  const invoiceMonthTotal = activeCardMonthTransactions.reduce((acc, t) => acc + t.amount, 0);
+  const pendingInvoiceMonthTotal = activeCardMonthTransactions
+    .filter(t => t.status === 'pending')
+    .reduce((acc, t) => acc + t.amount, 0);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         
+        {/* Cabeçalho */}
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Módulo de Cartões de Crédito com Fechamento & Parcelamento Inteligente</p>
+            <p className="text-sm text-slate-500">Módulo de Cartões de Crédito com Fechamento & Navegação Mensal</p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -367,16 +414,41 @@ export default function App() {
           </div>
         </header>
 
+        {/* Seletor do Mês de Competência */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <button
+            onClick={handlePrevMonth}
+            className="flex items-center gap-1 text-slate-600 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition cursor-pointer font-medium text-sm"
+          >
+            <ChevronLeft className="w-5 h-5" />
+            <span>Mês Anterior</span>
+          </button>
+
+          <div className="text-center">
+            <span className="text-xs uppercase font-bold text-slate-400">Competência Selecionada</span>
+            <h2 className="text-xl font-bold text-indigo-900 capitalize">{monthName}</h2>
+          </div>
+
+          <button
+            onClick={handleNextMonth}
+            className="flex items-center gap-1 text-slate-600 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition cursor-pointer font-medium text-sm"
+          >
+            <span>Próximo Mês</span>
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Cards de Resumo */}
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
-              <span>Saldo Realizado</span>
+              <span>Saldo Realizado ({currentMonth + 1}/{currentYear})</span>
               <Wallet className="w-4 h-4 text-slate-600" />
             </div>
             <h2 className={`text-2xl font-bold mt-2 ${totalRealized >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
               R$ {totalRealized.toFixed(2)}
             </h2>
-            <p className="text-xs text-slate-400 mt-1">Dinheiro em caixa atual</p>
+            <p className="text-xs text-slate-400 mt-1">Resultado de caixa no mês</p>
           </div>
 
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -413,19 +485,19 @@ export default function App() {
           </div>
         </section>
 
+        {/* MÓDULO VISUAL DE ACOMPANHAMENTO DE CARTÕES */}
         {creditCards.length > 0 && activeCard && activeCardLimit && (
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2">
                 <CreditCard className="w-6 h-6 text-indigo-600" />
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">Gestão de Faturas de Cartão</h3>
-                  <p className="text-xs text-slate-500">Ciclo de fechamento automático e controle de limite</p>
+                  <h3 className="text-lg font-bold text-slate-900">Fatura do Cartão — {monthName}</h3>
+                  <p className="text-xs text-slate-500">Ciclo de fechamento automático e liquidação em 1 clique</p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-500 uppercase">Selecionar Cartão:</span>
+              <div className="flex items-center gap-3">
                 <select
                   value={selectedCardView}
                   onChange={(e) => setSelectedCardView(e.target.value)}
@@ -435,10 +507,20 @@ export default function App() {
                     <option key={card.id} value={card.id}>{card.name} ({card.bank})</option>
                   ))}
                 </select>
+
+                {pendingInvoiceMonthTotal > 0 && (
+                  <button
+                    onClick={() => handlePayInvoice(activeCard.id)}
+                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg font-medium text-xs transition cursor-pointer shadow-sm"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                    <span>Pagar Fatura (R$ {pendingInvoiceMonthTotal.toFixed(2)})</span>
+                  </button>
+                )}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <span className="text-xs font-semibold uppercase text-slate-500">Limite Total</span>
                 <h4 className="text-xl font-bold text-slate-900 mt-1">R$ {activeCardLimit.total.toFixed(2)}</h4>
@@ -446,7 +528,13 @@ export default function App() {
               </div>
 
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs font-semibold uppercase text-slate-500">Limite Utilizado</span>
+                <span className="text-xs font-semibold uppercase text-slate-500">Total Fatura do Mês</span>
+                <h4 className="text-xl font-bold text-indigo-900 mt-1">R$ {invoiceMonthTotal.toFixed(2)}</h4>
+                <p className="text-[11px] text-slate-400 mt-1">Pendente: R$ {pendingInvoiceMonthTotal.toFixed(2)}</p>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <span className="text-xs font-semibold uppercase text-slate-500">Limite Utilizado Global</span>
                 <h4 className="text-xl font-bold text-rose-600 mt-1">R$ {activeCardLimit.used.toFixed(2)}</h4>
                 <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-2">
                   <div 
@@ -459,19 +547,19 @@ export default function App() {
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <span className="text-xs font-semibold uppercase text-slate-500">Limite Disponível</span>
                 <h4 className="text-xl font-bold text-emerald-600 mt-1">R$ {activeCardLimit.available.toFixed(2)}</h4>
-                <p className="text-[11px] text-slate-400 mt-1">Restituído automaticamente ao pagar faturas</p>
+                <p className="text-[11px] text-slate-400 mt-1">Restituído ao pagar parcelas</p>
               </div>
             </div>
 
             <div className="space-y-3">
               <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-indigo-600" />
-                Lançamentos por Fatura de Vencimento
+                Lançamentos na Fatura de {monthName}
               </h4>
 
-              {activeCardTransactions.length === 0 ? (
+              {activeCardMonthTransactions.length === 0 ? (
                 <p className="text-sm text-slate-400 py-4 text-center border border-dashed rounded-lg">
-                  Nenhuma compra ou parcela vinculada a este cartão.
+                  Nenhuma parcela ou compra com vencimento na fatura deste mês.
                 </p>
               ) : (
                 <div className="overflow-x-auto">
@@ -487,7 +575,7 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {activeCardTransactions.map((t) => (
+                      {activeCardMonthTransactions.map((t) => (
                         <tr key={t.id} className="hover:bg-slate-50">
                           <td className="p-3 text-slate-500">{t.date}</td>
                           <td className="p-3 font-medium text-slate-800">{t.description}</td>
@@ -514,18 +602,19 @@ export default function App() {
           </section>
         )}
 
+        {/* Gráficos por Categoria */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <PieChart className="w-5 h-5 text-indigo-600" />
-              Despesas por Categoria
+              Despesas por Categoria — {monthName}
             </h3>
             <span className="text-xs text-slate-400 font-medium">Distribuição de Gastos</span>
           </div>
 
           {expensesByCategory.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-6">
-              Nenhuma despesa registada para exibir no gráfico.
+              Nenhuma despesa registada para este mês.
             </p>
           ) : (
             <div className="space-y-3 pt-2">
@@ -550,11 +639,12 @@ export default function App() {
           )}
         </section>
 
+        {/* Extrato do Mês Selecionado */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
           <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Filter className="w-5 h-5 text-slate-500" />
-              <h3 className="text-lg font-bold text-slate-900">Extrato de Fluxo de Caixa (Competência)</h3>
+              <h3 className="text-lg font-bold text-slate-900">Extrato ({monthName})</h3>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -598,7 +688,7 @@ export default function App() {
                 {filteredTransactions.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-slate-400">
-                      Nenhum lançamento encontrado para os filtros selecionados.
+                      Nenhum lançamento encontrado para os filtros selecionados neste mês.
                     </td>
                   </tr>
                 ) : (
@@ -662,6 +752,7 @@ export default function App() {
 
       </div>
 
+      {/* Modais de Cadastro, Novo Lançamento e Exclusão mantidos idênticos */}
       {isManageModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -783,7 +874,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Gerir Contas e Categorias */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="border border-slate-200 p-4 rounded-xl space-y-3">
                 <h4 className="font-bold text-sm text-slate-800">Contas / Bancos</h4>
