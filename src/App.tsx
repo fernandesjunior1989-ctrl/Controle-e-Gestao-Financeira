@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, AlertTriangle } from 'lucide-react';
 
 interface Transaction {
   id: string;
@@ -11,7 +11,6 @@ interface Transaction {
 }
 
 export default function App() {
-  // Carrega os lançamentos salvos no localStorage ou usa os padrões iniciais
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_transactions');
     if (saved) {
@@ -48,12 +47,14 @@ export default function App() {
   const [type, setType] = useState<'income' | 'expense'>('income');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Sincroniza sempre com o localStorage ao alterar os lançamentos
+  // Estados para o Modal de Confirmação de Exclusão
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
+
   useEffect(() => {
     localStorage.setItem('@controle_financeiro_transactions', JSON.stringify(transactions));
   }, [transactions]);
 
-  // Cálculos dos totais
   const income = transactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + t.amount, 0);
@@ -64,7 +65,6 @@ export default function App() {
 
   const total = income - expense;
 
-  // Função para adicionar e gravar lançamento
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!description || !amount || !category) return;
@@ -80,7 +80,6 @@ export default function App() {
 
     setTransactions([newTransaction, ...transactions]);
     
-    // Reset do formulário e fechar modal
     setDescription('');
     setCategory('');
     setAmount('');
@@ -88,9 +87,19 @@ export default function App() {
     setIsModalOpen(false);
   };
 
-  // Função para apagar lançamento
-  const handleDeleteTransaction = (id: string) => {
-    setTransactions(transactions.filter(t => t.id !== id));
+  // Abre o modal de confirmação de exclusão
+  const confirmDelete = (id: string) => {
+    setTransactionToDelete(id);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Executa a exclusão definitiva após o botão de gravar/confirmar
+  const handleDeleteTransaction = () => {
+    if (transactionToDelete) {
+      setTransactions(transactions.filter(t => t.id !== transactionToDelete));
+      setIsDeleteModalOpen(false);
+      setTransactionToDelete(null);
+    }
   };
 
   return (
@@ -101,7 +110,7 @@ export default function App() {
         <header className="flex justify-between items-center border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Painel Principal com Gravação Automática</p>
+            <p className="text-sm text-slate-500">Painel Principal com Gestão de Lançamentos</p>
           </div>
           <button
             onClick={() => setIsModalOpen(true)}
@@ -192,7 +201,7 @@ export default function App() {
                       </td>
                       <td className="p-4 text-center">
                         <button
-                          onClick={() => handleDeleteTransaction(t.id)}
+                          onClick={() => confirmDelete(t.id)}
                           className="text-slate-400 hover:text-rose-600 transition p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer inline-flex items-center gap-1 text-xs font-medium"
                           title="Excluir Lançamento"
                         >
@@ -319,6 +328,42 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão (Gravar Exclusão) */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-6 relative border border-slate-200 text-center">
+            <div className="mx-auto w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-slate-900">Confirmar Exclusão</h3>
+              <p className="text-sm text-slate-500">
+                Tem certeza que deseja gravar a exclusão deste lançamento? Esta ação não pode ser desfeita.
+              </p>
+            </div>
+
+            <div className="flex justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer border border-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteTransaction}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition shadow-sm cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Sim, Excluir</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
