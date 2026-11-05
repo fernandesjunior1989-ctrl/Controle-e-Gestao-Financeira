@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, PieChart, CreditCard 
 } from 'lucide-react';
 
 interface Transaction {
@@ -20,7 +20,7 @@ const CATEGORIES = [
   'Lazer', 'Trabalho', 'Serviços', 'Outros'
 ];
 
-const ACCOUNTS = ['Banco do Brasil', 'Bradesco', 'Cartão de Crédito', 'Carteira'];
+const ACCOUNTS = ['Banco do Brasil', 'Bradesco', 'Cartão Nubank', 'Cartão Master', 'Carteira'];
 
 export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
@@ -47,7 +47,7 @@ export default function App() {
         id: '2',
         description: 'Supermercado Mensal',
         category: 'Alimentação',
-        account: 'Cartão de Crédito',
+        account: 'Cartão Nubank',
         date: '2026-06-03',
         amount: 850.00,
         type: 'expense',
@@ -102,6 +102,16 @@ export default function App() {
   const totalPendingExpense = transactions
     .filter(t => t.type === 'expense' && t.status === 'pending')
     .reduce((acc, t) => acc + t.amount, 0);
+
+  // Gastos por Categoria (para o gráfico em barras)
+  const expensesByCategory = CATEGORIES.map(cat => {
+    const totalCat = transactions
+      .filter(t => t.category === cat && t.type === 'expense')
+      .reduce((acc, t) => acc + t.amount, 0);
+    return { category: cat, total: totalCat };
+  }).filter(item => item.total > 0);
+
+  const maxCategoryExpense = Math.max(...expensesByCategory.map(i => i.total), 1);
 
   // Filtragem dos Lançamentos para Exibição
   const filteredTransactions = transactions.filter(t => {
@@ -163,7 +173,7 @@ export default function App() {
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Sistema Estilo Contas Online — Múltiplas Contas & Status</p>
+            <p className="text-sm text-slate-500">Painel Completo — Contas, Cartões e Gráficos por Categoria</p>
           </div>
           <button
             onClick={() => setIsModalOpen(true)}
@@ -221,6 +231,43 @@ export default function App() {
           </div>
         </section>
 
+        {/* Secção de Gráficos por Categoria */}
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <PieChart className="w-5 h-5 text-indigo-600" />
+              Despesas por Categoria
+            </h3>
+            <span className="text-xs text-slate-400 font-medium">Distribuição de Gastos</span>
+          </div>
+
+          {expensesByCategory.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-6">
+              Nenhuma despesa registada para exibir no gráfico.
+            </p>
+          ) : (
+            <div className="space-y-3 pt-2">
+              {expensesByCategory.map((item) => {
+                const percentage = (item.total / maxCategoryExpense) * 100;
+                return (
+                  <div key={item.category} className="space-y-1">
+                    <div className="flex justify-between text-xs font-semibold text-slate-700">
+                      <span>{item.category}</span>
+                      <span>R$ {item.total.toFixed(2)}</span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500" 
+                        style={{ width: `${percentage}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
         {/* Filtros e Tabela de Lançamentos */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
           <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -260,7 +307,7 @@ export default function App() {
                 <tr className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200">
                   <th className="p-4">Status</th>
                   <th className="p-4">Descrição</th>
-                  <th className="p-4">Conta / Origem</th>
+                  <th className="p-4">Conta / Cartão</th>
                   <th className="p-4">Categoria</th>
                   <th className="p-4">Data</th>
                   <th className="p-4">Valor</th>
@@ -293,7 +340,11 @@ export default function App() {
                       </td>
                       <td className="p-4 font-medium text-slate-800">{t.description}</td>
                       <td className="p-4 text-slate-600 text-xs font-medium flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                        {t.account.includes('Cartão') ? (
+                          <CreditCard className="w-3.5 h-3.5 text-indigo-500" />
+                        ) : (
+                          <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                        )}
                         {t.account}
                       </td>
                       <td className="p-4">
@@ -350,7 +401,7 @@ export default function App() {
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Pagamento Fornecedor, Conta de Água..."
+                  placeholder="Ex: Fatura Cartão, Consultoria..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -391,7 +442,7 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Conta / Banco
+                    Conta / Cartão
                   </label>
                   <select
                     value={account}
