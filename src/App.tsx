@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   PlusCircle, Trash2, X, Save, 
-  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, Shield, KeyRound, UserCheck, UserX, Menu, ArrowDownRight, Tag, PanelLeftClose, PanelLeftOpen
+  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, Shield, KeyRound, UserCheck, UserX, Menu, ArrowDownRight, Tag, PanelLeftClose, PanelLeftOpen, Calendar
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -99,9 +99,11 @@ export default function App() {
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<'admin' | 'user'>('user');
 
+  // ESTADOS DO FILTRO DE PERÍODO (DIA, MÊS, ANO)
+  const [periodFilterMode, setPeriodFilterMode] = useState<'month' | 'day' | 'year'>('month');
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   });
 
   const [creditCards, setCreditCards] = useState<CreditCardAccount[]>(() => {
@@ -474,42 +476,87 @@ export default function App() {
     );
   }
 
-  const handlePrevMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  // NAVEGAÇÃO DE NAVEGAÇÃO TEMPORAL
+  const handlePrevPeriod = () => {
+    const d = new Date(currentDate);
+    if (periodFilterMode === 'day') {
+      d.setDate(d.getDate() - 1);
+    } else if (periodFilterMode === 'month') {
+      d.setMonth(d.getMonth() - 1);
+    } else {
+      d.setFullYear(d.getFullYear() - 1);
+    }
+    setCurrentDate(d);
   };
 
-  const handleNextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  const handleNextPeriod = () => {
+    const d = new Date(currentDate);
+    if (periodFilterMode === 'day') {
+      d.setDate(d.getDate() + 1);
+    } else if (periodFilterMode === 'month') {
+      d.setMonth(d.getMonth() + 1);
+    } else {
+      d.setFullYear(d.getFullYear() + 1);
+    }
+    setCurrentDate(d);
   };
 
   const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newYear = parseInt(e.target.value);
-    setCurrentDate(new Date(newYear, currentDate.getMonth(), 1));
+    const d = new Date(currentDate);
+    d.setFullYear(newYear);
+    setCurrentDate(d);
   };
 
   const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newMonth = parseInt(e.target.value);
-    setCurrentDate(new Date(currentDate.getFullYear(), newMonth, 1));
+    const d = new Date(currentDate);
+    d.setMonth(newMonth);
+    setCurrentDate(d);
+  };
+
+  const handleDayChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.value) return;
+    const [y, m, d] = e.target.value.split('-').map(Number);
+    setCurrentDate(new Date(y, m - 1, d));
   };
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
+  const currentDay = currentDate.getDate();
   const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+  const dayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`;
+
   const monthName = currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+  const dayFormattedName = currentDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const activeTransactions = transactions.filter(t => !t.deletedAt);
   const trashedTransactions = transactions.filter(t => t.deletedAt);
 
-  const monthTransactions = activeTransactions.filter(t => {
+  // FILTRAGEM DINÂMICA DE TRANSAÇÕES POR DIA / MÊS / ANO
+  const periodTransactions = activeTransactions.filter(t => {
     const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
-    return targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth;
+    if (periodFilterMode === 'day') {
+      return (
+        targetDate.getFullYear() === currentYear &&
+        targetDate.getMonth() === currentMonth &&
+        targetDate.getDate() === currentDay
+      );
+    } else if (periodFilterMode === 'month') {
+      return (
+        targetDate.getFullYear() === currentYear &&
+        targetDate.getMonth() === currentMonth
+      );
+    } else {
+      return targetDate.getFullYear() === currentYear;
+    }
   });
 
-  const totalEntradasMes = monthTransactions
+  const totalEntradasMes = periodTransactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  const totalSaidasMes = monthTransactions
+  const totalSaidasMes = periodTransactions
     .filter(t => t.type === 'expense')
     .reduce((acc, t) => acc + t.amount, 0);
 
@@ -576,7 +623,7 @@ export default function App() {
 
   const activeCardLimit = activeCard ? getCardLimitDetails(activeCard.id) : null;
   const activeCardMonthTransactions = activeCard 
-    ? monthTransactions.filter(t => t.creditCardId === activeCard.id) 
+    ? periodTransactions.filter(t => t.creditCardId === activeCard.id) 
     : [];
 
   const invoiceMonthTotal = activeCardMonthTransactions.reduce((acc, t) => acc + t.amount, 0) + broughtForward;
@@ -630,7 +677,7 @@ export default function App() {
 
   const exportToCSV = () => {
     const headers = ["Status", "Descricao", "Conta/Cartao", "Categoria", "Vencimento", "Tipo", "Valor"];
-    const rows = monthTransactions.map(t => [
+    const rows = periodTransactions.map(t => [
       t.status === 'paid' ? 'Pago' : 'Pendente',
       `"${t.description}"`,
       `"${t.account}"`,
@@ -644,7 +691,7 @@ export default function App() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `extrato_${currentYear}_${currentMonth + 1}.csv`);
+    link.setAttribute("download", `extrato_filtrado.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1075,7 +1122,7 @@ export default function App() {
     }));
   };
 
-  const baseFiltered = monthTransactions.filter(t => {
+  const baseFiltered = periodTransactions.filter(t => {
     const matchesCategory = selectedCategoryFilter === 'all' || t.category === selectedCategoryFilter;
     const matchesSearch = searchQuery === '' || 
       t.description.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1217,13 +1264,13 @@ export default function App() {
                 <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs space-y-1">
                   <span className="text-[11px] font-bold uppercase text-emerald-700 tracking-wider">Total de Entradas</span>
                   <div className="text-xl font-bold text-emerald-600">R$ {totalEntradasMes.toFixed(2)}</div>
-                  <p className="text-[11px] text-slate-400">Soma de todas as receitas do mês</p>
+                  <p className="text-[11px] text-slate-400">Soma das receitas no período selecionado</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-xs space-y-1">
                   <span className="text-[11px] font-bold uppercase text-rose-700 tracking-wider">Total de Saídas</span>
                   <div className="text-xl font-bold text-rose-600">R$ {totalSaidasMes.toFixed(2)}</div>
-                  <p className="text-[11px] text-slate-400">Soma de todas as despesas do mês</p>
+                  <p className="text-[11px] text-slate-400">Soma das despesas no período selecionado</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
@@ -1235,63 +1282,122 @@ export default function App() {
                 </div>
               </section>
 
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                  <button onClick={handlePrevMonth} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer">
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <select
-                    value={currentMonth}
-                    onChange={handleMonthChange}
-                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 capitalize cursor-pointer"
-                  >
-                    {Array.from({ length: 12 }, (_, i) => {
-                      const d = new Date(2026, i, 1);
-                      const name = d.toLocaleString('pt-BR', { month: 'long' });
-                      return <option key={i} value={i}>{name}</option>;
-                    })}
-                  </select>
-                  <select
-                    value={currentYear}
-                    onChange={handleYearChange}
-                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
-                  >
-                    {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                  <button onClick={handleNextMonth} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer">
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+              {/* BARRA DE FILTRO DE PERÍODO (DIA, MÊS, ANO) */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4">
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-emerald-600" />
+                    <span className="text-xs font-bold text-slate-700 uppercase">Filtrar Período Por:</span>
+                    <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 text-xs">
+                      <button
+                        onClick={() => setPeriodFilterMode('day')}
+                        className={`px-3 py-1 rounded-md font-semibold transition cursor-pointer ${periodFilterMode === 'day' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                      >
+                        Dia
+                      </button>
+                      <button
+                        onClick={() => setPeriodFilterMode('month')}
+                        className={`px-3 py-1 rounded-md font-semibold transition cursor-pointer ${periodFilterMode === 'month' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                      >
+                        Mês
+                      </button>
+                      <button
+                        onClick={() => setPeriodFilterMode('year')}
+                        className={`px-3 py-1 rounded-md font-semibold transition cursor-pointer ${periodFilterMode === 'year' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                      >
+                        Ano
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* CONTROLES NAVEGÁVEIS POR TIPO DE FILTRO */}
+                  <div className="flex items-center gap-2 justify-center">
+                    <button onClick={handlePrevPeriod} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer" title="Período anterior">
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+
+                    {periodFilterMode === 'day' && (
+                      <input
+                        type="date"
+                        value={dayStr}
+                        onChange={handleDayChange}
+                        className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
+                      />
+                    )}
+
+                    {periodFilterMode === 'month' && (
+                      <>
+                        <select
+                          value={currentMonth}
+                          onChange={handleMonthChange}
+                          className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 capitalize cursor-pointer"
+                        >
+                          {Array.from({ length: 12 }, (_, i) => {
+                            const d = new Date(2026, i, 1);
+                            const name = d.toLocaleString('pt-BR', { month: 'long' });
+                            return <option key={i} value={i}>{name}</option>;
+                          })}
+                        </select>
+                        <select
+                          value={currentYear}
+                          onChange={handleYearChange}
+                          className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
+                        >
+                          {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                        </select>
+                      </>
+                    )}
+
+                    {periodFilterMode === 'year' && (
+                      <select
+                        value={currentYear}
+                        onChange={handleYearChange}
+                        className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
+                      >
+                        {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    )}
+
+                    <button onClick={handleNextPeriod} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer" title="Próximo período">
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+                {/* BUSCA, SELEÇÃO DE CATEGORIA E EXPORTAÇÃO */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                   <input
                     type="text"
                     placeholder="Pesquisar descrição ou categoria..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 w-full sm:w-48"
+                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 w-full sm:w-64"
                   />
 
-                  <select
-                    value={selectedCategoryFilter}
-                    onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-medium"
-                  >
-                    <option value="all">Todas as Categorias</option>
-                    {categories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <select
+                      value={selectedCategoryFilter}
+                      onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                      className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-medium"
+                    >
+                      <option value="all">Todas as Categorias</option>
+                      {categories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
 
-                  <button
-                    onClick={exportToCSV}
-                    className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>CSV</span>
-                  </button>
+                    <button
+                      onClick={exportToCSV}
+                      className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>CSV</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1312,7 +1418,7 @@ export default function App() {
                 <div className="p-4 bg-emerald-50/70 border-b border-emerald-100 flex items-center justify-between">
                   <h3 className="text-sm font-bold text-emerald-900 flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-                    ENTRADAS (RECEITAS) — {monthName}
+                    ENTRADAS (RECEITAS) — {periodFilterMode === 'day' ? dayFormattedName : periodFilterMode === 'month' ? monthName : `Ano de ${currentYear}`}
                   </h3>
                   <span className="text-xs font-bold text-emerald-700">Total: R$ {totalEntradasMes.toFixed(2)}</span>
                 </div>
@@ -1407,7 +1513,7 @@ export default function App() {
                 <div className="p-4 bg-rose-50/70 border-b border-rose-100 flex items-center justify-between">
                   <h3 className="text-sm font-bold text-rose-900 flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
-                    SAÍDAS (DESPESAS) — {monthName}
+                    SAÍDAS (DESPESAS) — {periodFilterMode === 'day' ? dayFormattedName : periodFilterMode === 'month' ? monthName : `Ano de ${currentYear}`}
                   </h3>
                   <span className="text-xs font-bold text-rose-700">Total: R$ {totalSaidasMes.toFixed(2)}</span>
                 </div>
@@ -1698,7 +1804,7 @@ export default function App() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2">
                 {categories.map(cat => {
-                  const spent = monthTransactions
+                  const spent = periodTransactions
                     .filter(t => t.category === cat && t.type === 'expense')
                     .reduce((acc, t) => acc + t.amount, 0);
                   const budgetLimit = budgets[cat] || 0;
