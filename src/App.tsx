@@ -192,9 +192,11 @@ export default function App() {
   const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
 
-  // ESTADO PARA EXCLUSÃO DEFINITIVA INDIVIDUAL NA LIXEIRA
+  // ESTADOS DA LIXEIRA (SELEÇÃO E EXCLUSÃO DEFINITIVA EM LOTE)
+  const [selectedTrashIds, setSelectedTrashIds] = useState<string[]>([]);
   const [isPermanentDeleteModalOpen, setIsPermanentDeleteModalOpen] = useState(false);
   const [permanentIdToDelete, setPermanentIdToDelete] = useState<string | null>(null);
+  const [isBatchPermanentModalOpen, setIsBatchPermanentModalOpen] = useState(false);
 
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Outros');
@@ -1155,7 +1157,38 @@ export default function App() {
     }));
   };
 
-  // EXCLUSÃO DEFINITIVA (REMOVE DO ARRAY PERMANENTEMENTE)
+  // RESTAURAR SELECIONADOS NA LIXEIRA
+  const restoreBatchFromTrash = () => {
+    setTransactions(transactions.map(t => {
+      if (selectedTrashIds.includes(t.id)) {
+        const { deletedAt, ...rest } = t;
+        return rest;
+      }
+      return t;
+    }));
+    setSelectedTrashIds([]);
+  };
+
+  // SELEÇÃO NA LIXEIRA
+  const toggleSelectAllTrash = () => {
+    const allIds = trashedTransactions.map(t => t.id);
+    const allSelected = allIds.every(id => selectedTrashIds.includes(id));
+    if (allSelected) {
+      setSelectedTrashIds([]);
+    } else {
+      setSelectedTrashIds(allIds);
+    }
+  };
+
+  const toggleSelectTrashOne = (id: string) => {
+    if (selectedTrashIds.includes(id)) {
+      setSelectedTrashIds(selectedTrashIds.filter(itemId => itemId !== id));
+    } else {
+      setSelectedTrashIds([...selectedTrashIds, id]);
+    }
+  };
+
+  // EXCLUSÃO DEFINITIVA INDIVIDUAL
   const confirmPermanentDelete = (id: string) => {
     setPermanentIdToDelete(id);
     setIsPermanentDeleteModalOpen(true);
@@ -1166,6 +1199,13 @@ export default function App() {
     setTransactions(transactions.filter(t => t.id !== permanentIdToDelete));
     setIsPermanentDeleteModalOpen(false);
     setPermanentIdToDelete(null);
+  };
+
+  // EXCLUSÃO DEFINITIVA EM LOTE NA LIXEIRA
+  const executeBatchPermanentDelete = () => {
+    setTransactions(transactions.filter(t => !selectedTrashIds.includes(t.id)));
+    setSelectedTrashIds([]);
+    setIsBatchPermanentModalOpen(false);
   };
 
   const baseFiltered = periodTransactions.filter(t => {
@@ -2162,7 +2202,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DA LIXEIRA COM BOTÃO DE EXCLUSÃO DEFINITIVA */}
+      {/* MODAL DA LIXEIRA COM RECUPERAÇÃO E EXCLUSÃO EM LOTE */}
       {isTrashModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -2179,52 +2219,91 @@ export default function App() {
               </button>
             </div>
 
+            {selectedTrashIds.length > 0 && (
+              <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 p-3 rounded-xl text-xs">
+                <span className="font-bold text-indigo-900">{selectedTrashIds.length} item(ns) selecionado(s) na lixeira</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={restoreBatchFromTrash}
+                    className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Restaurar Selecionados</span>
+                  </button>
+                  <button
+                    onClick={() => setIsBatchPermanentModalOpen(true)}
+                    className="flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Excluir Definitivo (Lote)</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200">
+                    <th className="p-3 w-10 text-center">
+                      <button onClick={toggleSelectAllTrash} className="cursor-pointer text-slate-500">
+                        {trashedTransactions.length > 0 && trashedTransactions.every(t => selectedTrashIds.includes(t.id)) ? (
+                          <CheckSquare className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+                    </th>
                     <th className="p-3">Descrição</th>
                     <th className="p-3">Categoria</th>
                     <th className="p-3">Vencimento</th>
                     <th className="p-3">Valor</th>
-                    <th className="p-3 text-center">Ações na Lixeira</th>
+                    <th className="p-3 text-center">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 text-xs">
                   {trashedTransactions.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-slate-400">
+                      <td colSpan={6} className="p-8 text-center text-slate-400">
                         A lixeira está vazia. Nenhum registro excluído recentemente.
                       </td>
                     </tr>
                   ) : (
-                    trashedTransactions.map(t => (
-                      <tr key={t.id} className="hover:bg-slate-50 transition">
-                        <td className="p-3 font-medium text-slate-800">{t.description}</td>
-                        <td className="p-3 text-slate-600">{t.category}</td>
-                        <td className="p-3 text-slate-500">{t.dueDate || t.date}</td>
-                        <td className={`p-3 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {formatCurrency(t.amount)}
-                        </td>
-                        <td className="p-3 text-center space-x-2">
-                          <button
-                            onClick={() => restoreFromTrash(t.id)}
-                            className="inline-flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Restaurar</span>
-                          </button>
-                          <button
-                            onClick={() => confirmPermanentDelete(t.id)}
-                            className="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                            title="Excluir Definitivamente"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Excluir Definitivo</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                    trashedTransactions.map(t => {
+                      const isSelected = selectedTrashIds.includes(t.id);
+                      return (
+                        <tr key={t.id} className={`hover:bg-slate-50 transition ${isSelected ? 'bg-indigo-50/40' : ''}`}>
+                          <td className="p-3 text-center">
+                            <button onClick={() => toggleSelectTrashOne(t.id)} className="cursor-pointer text-slate-500">
+                              {isSelected ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4" />}
+                            </button>
+                          </td>
+                          <td className="p-3 font-medium text-slate-800">{t.description}</td>
+                          <td className="p-3 text-slate-600">{t.category}</td>
+                          <td className="p-3 text-slate-500">{t.dueDate || t.date}</td>
+                          <td className={`p-3 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {formatCurrency(t.amount)}
+                          </td>
+                          <td className="p-3 text-center space-x-2">
+                            <button
+                              onClick={() => restoreFromTrash(t.id)}
+                              className="inline-flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Restaurar</span>
+                            </button>
+                            <button
+                              onClick={() => confirmPermanentDelete(t.id)}
+                              className="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                              title="Excluir Definitivamente"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Excluir Definitivo</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -2243,7 +2322,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DEFINITIVA */}
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DEFINITIVA INDIVIDUAL */}
       {isPermanentDeleteModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200 text-center">
@@ -2273,6 +2352,42 @@ export default function App() {
               >
                 <Trash2 className="w-4 h-4" />
                 <span>Sim, Excluir</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DEFINITIVA EM LOTE */}
+      {isBatchPermanentModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200 text-center">
+            <div className="mx-auto w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-slate-900">Exclusão Definitiva em Lote</h3>
+              <p className="text-xs text-slate-500">
+                Tem certeza que deseja excluir permanentemente os <strong className="text-slate-800">{selectedTrashIds.length}</strong> itens selecionados? Esta ação não poderá ser desfeita.
+              </p>
+            </div>
+
+            <div className="flex justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsBatchPermanentModalOpen(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer border border-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={executeBatchPermanentDelete}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition shadow-sm cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Sim, Excluir Todos</span>
               </button>
             </div>
           </div>
