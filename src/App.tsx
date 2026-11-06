@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   PlusCircle, Trash2, X, Save, 
-  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, Shield, KeyRound, UserCheck, UserX, Menu, ArrowDownRight, Tag, PanelLeftClose, PanelLeftOpen, Calendar
+  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, KeyRound, Menu, ArrowDownRight, Tag, PanelLeftClose, PanelLeftOpen, Calendar
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -1006,7 +1006,6 @@ export default function App() {
 
   const openEditModal = (t: Transaction) => {
     setEditingTransaction(t);
-    // Remove marcadores numéricos de parcelamento se existirem para uma edição limpa
     const cleanDesc = t.description.replace(/\s\(\d+\/\d+\)$/, '');
     setEditDescription(cleanDesc);
     setEditAmount(t.amount.toString());
@@ -1038,7 +1037,6 @@ export default function App() {
     executeFinalEdit();
   };
 
-  // EXECUÇÃO DA EDIÇÃO SEM DUPLICAÇÃO
   const executeFinalEdit = () => {
     if (!editingTransaction) return;
     const newAmt = parseFormattedNumber(editAmount);
@@ -1046,9 +1044,7 @@ export default function App() {
 
     const targetGroup = editingTransaction.installmentGroup;
 
-    // 1. Se alterou a modalidade de Único para Parcelado ou Recorrente:
     if (editLaunchMode === 'installment' || editLaunchMode === 'recurring') {
-      // Remove o lançamento original antigo para evitar duplicação
       const filteredList = transactions.filter(t => t.id !== editingTransaction.id);
       
       let newTransactionsList = [...filteredList];
@@ -1166,11 +1162,9 @@ export default function App() {
 
       setTransactions(newTransactionsList);
     } else {
-      // 2. Edição no mesmo lançamento (Modo Padrão / Único)
       const auditMsg = `Editado por ${currentUser.username} em ${new Date().toLocaleString()}: alterado para R$ ${newAmt}`;
 
       setTransactions(transactions.map(t => {
-        // Atualiza o item exatamente selecionado
         if (t.id === editingTransaction.id) {
           const formattedDesc = t.installmentInfo 
             ? `${editDescription} (${t.installmentInfo.replace('Parcela ', '')})` 
@@ -1187,7 +1181,6 @@ export default function App() {
           };
         }
 
-        // Se for um grupo de parcelas/recorrências e o usuário escolheu estender a alteração:
         if (targetGroup && t.installmentGroup === targetGroup) {
           if (editScope === 'forward' && t.dueDate > editingTransaction.dueDate) {
             const formattedDesc = t.installmentInfo 
@@ -1781,7 +1774,7 @@ export default function App() {
             </div>
           )}
 
-          {/* DEMAIS MÓDULOS PERMANECEM MANTIDOS */}
+          {/* DEMAIS MÓDULOS */}
           {currentModule === 'accounts' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-base font-bold text-slate-900">Contas Bancárias e Carteiras Cadastradas</h3>
@@ -2160,7 +2153,6 @@ export default function App() {
                 </select>
               </div>
 
-              {/* OPÇÃO DE ESCOPO DE EDIÇÃO CASO PERTENÇA A UM GRUPO */}
               {editingTransaction.installmentGroup && editLaunchMode === 'single' && (
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2 text-xs">
                   <span className="font-bold text-slate-700 block uppercase">Aplicar Alterações Em:</span>
@@ -2273,7 +2265,7 @@ export default function App() {
         </div>
       )}
 
-      {/* DEMAIS MODAIS MANUTENÇÃO */}
+      {/* DEMAIS MODAIS */}
       {isNatureChangeConfirmOpen && editingTransaction && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200 text-center">
