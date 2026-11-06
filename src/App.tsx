@@ -174,6 +174,7 @@ export default function App() {
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
+  // ESTADOS DE EDIÇÃO COM SUPORTE A MODALIDADE E PARCELAS/RECORRÊNCIA
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editScope, setEditScope] = useState<'single' | 'forward'>('single');
@@ -182,6 +183,15 @@ export default function App() {
   const [editCategory, setEditCategory] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editType, setEditType] = useState<'income' | 'expense'>('expense');
+  
+  // NOVOS ESTADOS PARA MODALIDADE NO EDITAR
+  const [editLaunchMode, setEditLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
+  const [editInstallmentModeType, setEditInstallmentModeType] = useState<'divide' | 'repeat'>('divide');
+  const [editInstallmentsCount, setEditInstallmentsCount] = useState('12');
+  const [editRecurrencePeriod, setEditRecurrencePeriod] = useState<string>('Mensal');
+  const [editRecurrenceEndType, setEditRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
+  const [editRecurrenceEndDate, setEditRecurrenceEndDate] = useState('');
+
   const [isNatureChangeConfirmOpen, setIsNatureChangeConfirmOpen] = useState(false);
 
   const [isEditAccountModalOpen, setIsEditAccountModalOpen] = useState(false);
@@ -1002,6 +1012,7 @@ export default function App() {
     setEditDueDate(t.dueDate || t.date);
     setEditType(t.type);
     setEditScope('single');
+    setEditLaunchMode('single');
     setIsEditModalOpen(true);
   };
 
@@ -1022,31 +1033,153 @@ export default function App() {
     const newAmt = parseFormattedNumber(editAmount);
     if (newAmt <= 0) return;
 
-    const targetGroup = editingTransaction.installmentGroup;
-    const auditMsg = `Editado por ${currentUser.username} em ${new Date().toLocaleString()}: tipo alterado para ${editType === 'income' ? 'Receita' : 'Despesa'}, valor R$ ${newAmt}`;
+    // Se o usuário selecionou modalidade parcelada ou recorrente ao editar:
+    if (editLaunchMode === 'installment' || editLaunchMode === 'recurring') {
+      // Remove o lançamento antigo (ou gera a nova série substituindo)
+      const filteredWithoutEdited = transactions.filter(t => t.id !== editingTransaction.id);
+      
+      let newTransactionsList = [...filteredWithoutEdited];
+      const groupId = crypto.randomUUID();
+      const baseDate = editDueDate;
 
-    setTransactions(transactions.map(t => {
-      if (t.id === editingTransaction.id) {
-        return {
-          ...t,
-          description: editDescription,
-          amount: newAmt,
-          category: editCategory,
-          dueDate: editDueDate,
-          type: editType,
-          auditHistory: [...(t.auditHistory || []), auditMsg]
-        };
+      if (editLaunchMode === 'installment') {
+        const totalParts = parseInt(editInstallmentsCount);
+        if (editInstallmentModeType === 'divide') {
+          const exactPartVal = newAmt / totalParts;
+          let accumulated = 0;
+          for (let i = 1; i <= totalParts; i++) {
+            const d = new Date(baseDate + 'T00:00:00');
+            d.setMonth(d.getMonth() + (i - 1));
+            const dueDateStr = d.toISOString().split('T')[0];
+
+            let currentPartVal = parseFloat(exactPartVal.toFixed(2));
+            if (i === totalParts) {
+              currentPartVal = parseFloat((newAmt - accumulated).toFixed(2));
+            } else {
+              accumulated += currentPartVal;
+            }
+
+            const item: Transaction = {
+              id: crypto.randomUUID(),
+              description: `${editDescription} (${i}/${totalParts})`,
+              category: editCategory,
+              account: editingTransaction.account,
+              creditCardId: editingTransaction.creditCardId,
+              date: baseDate,
+              dueDate: dueDateStr,
+              amount: currentPartVal,
+              type: editType,
+              status: 'pending',
+              installmentInfo: `Parcela ${i}/${totalParts}`,
+              installmentGroup: groupId,
+              auditHistory: [...(editingTransaction.auditHistory || []), `Convertido em parcelado por ${currentUser.username} em ${new Date().toLocaleString()}`]
+            };
+            newTransactionsList.unshift(item);
+          }
+        } else {
+          for (let i = 1; i <= totalParts; i++) {
+            const d = new Date(baseDate + 'T00:00:00');
+            d.setMonth(d.getMonth() + (i - 1));
+            const dueDateStr = d.toISOString().split('T')[0];
+
+            const item: Transaction = {
+              id: crypto.randomUUID(),
+              description: `${editDescription} (${i}/${totalParts})`,
+              category: editCategory,
+              account: editingTransaction.account,
+              creditCardId: editingTransaction.creditCardId,
+              date: baseDate,
+              dueDate: dueDateStr,
+              amount: newAmt,
+              type: editType,
+              status: 'pending',
+              installmentInfo: `Parcela ${i}/${totalParts}`,
+              installmentGroup: groupId,
+              auditHistory: [...(editingTransaction.auditHistory || []), `Convertido em parcelado por ${currentUser.username} em ${new Date().toLocaleString()}`]
+            };
+            newTransactionsList.unshift(item);
+          }
+        }
+      } else if (editLaunchMode === 'recurring') {
+        const baseDateObj = new Date(baseDate + 'T00:00:00');
+        let iterations = 12;
+        let stepDays = 30;
+        if (editRecurrencePeriod === 'Diária') stepDays = 1;
+        else if (editRecurrencePeriod === 'Semanal') stepDays = 7;
+        else if (editRecurrencePeriod === 'Quinzenal') stepDays = 15;
+        else if (editRecurrencePeriod === 'Mensal') stepDays = 30;
+        else if (editRecurrencePeriod === 'Bimestral') stepDays = 60;
+        else if (editRecurrencePeriod === 'Trimestral') stepDays = 90;
+        else if (editRecurrencePeriod === 'Semestral') stepDays = 180;
+        else if (editRecurrencePeriod === 'Anual') stepDays = 365;
+
+        if (editRecurrenceEndType === 'date' && editRecurrenceEndDate) {
+          const endObj = new Date(editRecurrenceEndDate + 'T00:00:00');
+          const diffTime = Math.abs(endObj.getTime() - baseDateObj.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          iterations = Math.max(1, Math.floor(diffDays / (stepDays || 30)));
+        }
+
+        for (let i = 0; i < iterations; i++) {
+          const currentD = new Date(baseDateObj);
+          if (editRecurrencePeriod === 'Anual') {
+            currentD.setFullYear(baseDateObj.getFullYear() + i);
+          } else if (editRecurrencePeriod === 'Mensal' || editRecurrencePeriod === 'Bimestral' || editRecurrencePeriod === 'Trimestral' || editRecurrencePeriod === 'Semestral') {
+            const monthsAdd = editRecurrencePeriod === 'Mensal' ? i : editRecurrencePeriod === 'Bimestral' ? i * 2 : editRecurrencePeriod === 'Trimestral' ? i * 3 : i * 6;
+            currentD.setMonth(baseDateObj.getMonth() + monthsAdd);
+          } else {
+            currentD.setDate(baseDateObj.getDate() + (i * stepDays));
+          }
+          const formattedDate = currentD.toISOString().split('T')[0];
+
+          const item: Transaction = {
+            id: crypto.randomUUID(),
+            description: editDescription,
+            category: editCategory,
+            account: editingTransaction.account,
+            creditCardId: editingTransaction.creditCardId,
+            date: formattedDate,
+            dueDate: formattedDate,
+            amount: newAmt,
+            type: editType,
+            status: i === 0 ? editingTransaction.status : 'pending',
+            recurringInfo: `Recorrente (${editRecurrencePeriod})`,
+            installmentGroup: groupId,
+            auditHistory: [...(editingTransaction.auditHistory || []), `Convertido em recorrente por ${currentUser.username} em ${new Date().toLocaleString()}`]
+          };
+          newTransactionsList.unshift(item);
+        }
       }
-      if (editScope === 'forward' && targetGroup && t.installmentGroup === targetGroup && t.dueDate > editingTransaction.dueDate) {
-        return {
-          ...t,
-          description: editDescription,
-          amount: newAmt,
-          category: editCategory
-        };
-      }
-      return t;
-    }));
+
+      setTransactions(newTransactionsList);
+    } else {
+      // Edição padrão simples
+      const targetGroup = editingTransaction.installmentGroup;
+      const auditMsg = `Editado por ${currentUser.username} em ${new Date().toLocaleString()}: tipo alterado para ${editType === 'income' ? 'Receita' : 'Despesa'}, valor R$ ${newAmt}`;
+
+      setTransactions(transactions.map(t => {
+        if (t.id === editingTransaction.id) {
+          return {
+            ...t,
+            description: editDescription,
+            amount: newAmt,
+            category: editCategory,
+            dueDate: editDueDate,
+            type: editType,
+            auditHistory: [...(t.auditHistory || []), auditMsg]
+          };
+        }
+        if (editScope === 'forward' && targetGroup && t.installmentGroup === targetGroup && t.dueDate > editingTransaction.dueDate) {
+          return {
+            ...t,
+            description: editDescription,
+            amount: newAmt,
+            category: editCategory
+          };
+        }
+        return t;
+      }));
+    }
 
     setIsNatureChangeConfirmOpen(false);
     setIsEditModalOpen(false);
@@ -2201,14 +2334,14 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE EDIÇÃO POR COMPETÊNCIA */}
+      {/* MODAL DE EDIÇÃO POR COMPETÊNCIA E MODALIDADE */}
       {isEditModalOpen && editingTransaction && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b pb-3 border-slate-100">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <ArrowRightLeft className="w-5 h-5 text-indigo-600" />
-                Editar Lançamento e Natureza
+                Editar Lançamento e Modalidade
               </h3>
               <button
                 onClick={() => setIsEditModalOpen(false)}
@@ -2232,7 +2365,9 @@ export default function App() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Valor (R$)</label>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                    {editLaunchMode === 'installment' && editInstallmentModeType === 'divide' ? 'Valor Total (R$)' : 'Valor (R$)'}
+                  </label>
                   <input
                     type="text"
                     required
@@ -2279,17 +2414,90 @@ export default function App() {
                 </div>
               </div>
 
-              {editingTransaction.installmentGroup && (
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1">
-                  <span className="font-bold text-slate-700 block uppercase">Escopo da Alteração:</span>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="editScope" checked={editScope === 'single'} onChange={() => setEditScope('single')} />
-                    <span>Alterar somente esta competência</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="editScope" checked={editScope === 'forward'} onChange={() => setEditScope('forward')} />
-                    <span>Alterar esta e as próximas</span>
-                  </label>
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Modalidade</label>
+                <select
+                  value={editLaunchMode}
+                  onChange={(e) => setEditLaunchMode(e.target.value as any)}
+                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white font-semibold text-indigo-900"
+                >
+                  <option value="single">Lançamento Único / Padrão</option>
+                  <option value="installment">Parcelado (Finito)</option>
+                  <option value="recurring">Recorrente (Contínuo)</option>
+                </select>
+              </div>
+
+              {editLaunchMode === 'installment' && (
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2 text-xs">
+                  <div>
+                    <label className="block font-semibold uppercase text-slate-500 mb-1">Tipo de Parcelamento</label>
+                    <select
+                      value={editInstallmentModeType}
+                      onChange={(e) => setEditInstallmentModeType(e.target.value as any)}
+                      className="w-full border border-slate-300 rounded-lg p-2 bg-white font-medium"
+                    >
+                      <option value="divide">Dividir valor total pelas parcelas</option>
+                      <option value="repeat">Repetir valor informado em cada parcela</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold uppercase text-slate-500 mb-1">Quantidade de Parcelas</label>
+                    <select
+                      value={editInstallmentsCount}
+                      onChange={(e) => setEditInstallmentsCount(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg p-2 bg-white"
+                    >
+                      {Array.from({ length: 359 }, (_, i) => i + 2).map(num => (
+                        <option key={num} value={num}>{num}x vezes</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {editLaunchMode === 'recurring' && (
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2 text-xs">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-semibold uppercase text-slate-500 mb-1">Periodicidade</label>
+                      <select
+                        value={editRecurrencePeriod}
+                        onChange={(e) => setEditRecurrencePeriod(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 bg-white"
+                      >
+                        <option value="Diária">Diária</option>
+                        <option value="Semanal">Semanal</option>
+                        <option value="Quinzenal">Quinzenal</option>
+                        <option value="Mensal">Mensal</option>
+                        <option value="Bimestral">Bimestral</option>
+                        <option value="Trimestral">Trimestral</option>
+                        <option value="Semestral">Semestral</option>
+                        <option value="Anual">Anual</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-semibold uppercase text-slate-500 mb-1">Prazo</label>
+                      <select
+                        value={editRecurrenceEndType}
+                        onChange={(e) => setEditRecurrenceEndType(e.target.value as any)}
+                        className="w-full border border-slate-300 rounded-lg p-2 bg-white"
+                      >
+                        <option value="indeterminate">Prazo Indeterminado</option>
+                        <option value="date">Até Data Final</option>
+                      </select>
+                    </div>
+                  </div>
+                  {editRecurrenceEndType === 'date' && (
+                    <div>
+                      <label className="block font-semibold uppercase text-slate-500 mb-1">Data de Término</label>
+                      <input
+                        type="date"
+                        value={editRecurrenceEndDate}
+                        onChange={(e) => setEditRecurrenceEndDate(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 bg-white"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
