@@ -212,6 +212,11 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCardView, setSelectedCardView] = useState<string>(creditCards[0]?.id || '');
 
+  // FUNÇÃO AUXILIAR PARA FORMATAR MOEDA NO PADRÃO BRASILEIRO (R$ X.XXX,XX)
+  const formatCurrency = (val: number): string => {
+    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  };
+
   const parseFormattedNumber = (valStr: string): number => {
     if (!valStr) return 0;
     const cleanStr = valStr.toString().replace(/\./g, '').replace(',', '.');
@@ -470,17 +475,15 @@ export default function App() {
   const activeTransactions = transactions.filter(t => !t.deletedAt);
   const trashedTransactions = transactions.filter(t => t.deletedAt);
 
-  // FUNÇÃO DE DETECÇÃO E REMOÇÃO DE DUPLICADOS (COMPARA DESCRIÇÃO, VALOR, DATA E TIPO)
   const handleRemoveDuplicates = () => {
     const seen = new Set<string>();
     let removedCount = 0;
 
     const cleanedTransactions = transactions.filter(t => {
-      // Chave única para identificar duplicatas idênticas
       const key = `${t.description.trim().toLowerCase()}_${t.amount}_${t.dueDate || t.date}_${t.type}_${t.account}`;
       if (seen.has(key)) {
         removedCount++;
-        return false; // Remove duplicada
+        return false;
       }
       seen.add(key);
       return true;
@@ -491,7 +494,6 @@ export default function App() {
     setTimeout(() => setDuplicateMessage(null), 4000);
   };
 
-  // EXPANSÃO DINÂMICA DE RECORRÊNCIAS SEM FIM (PRAZO INDETERMINADO)
   const getExpandedTransactions = () => {
     const result: Transaction[] = [];
     const viewedYear = currentYear;
@@ -533,7 +535,6 @@ export default function App() {
 
   const expandedActiveTransactions = getExpandedTransactions();
 
-  // FILTRAGEM DINÂMICA DE TRANSAÇÕES POR DIA / MÊS / ANO
   const periodTransactions = expandedActiveTransactions.filter(t => {
     const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
     if (periodFilterMode === 'day') {
@@ -1301,20 +1302,20 @@ export default function App() {
               <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs space-y-1">
                   <span className="text-[11px] font-bold uppercase text-emerald-700 tracking-wider">Total de Entradas</span>
-                  <div className="text-xl font-bold text-emerald-600">R$ {totalEntradasMes.toFixed(2)}</div>
+                  <div className="text-xl font-bold text-emerald-600">{formatCurrency(totalEntradasMes)}</div>
                   <p className="text-[11px] text-slate-400">Soma das receitas no período selecionado</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-xs space-y-1">
                   <span className="text-[11px] font-bold uppercase text-rose-700 tracking-wider">Total de Saídas</span>
-                  <div className="text-xl font-bold text-rose-600">R$ {totalSaidasMes.toFixed(2)}</div>
+                  <div className="text-xl font-bold text-rose-600">{formatCurrency(totalSaidasMes)}</div>
                   <p className="text-[11px] text-slate-400">Soma das despesas no período selecionado</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
                   <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">Saldo (Entradas - Saídas)</span>
                   <div className={`text-xl font-bold ${saldoMes >= 0 ? 'text-indigo-900' : 'text-rose-600'}`}>
-                    R$ {saldoMes.toFixed(2)}
+                    {formatCurrency(saldoMes)}
                   </div>
                   <p className="text-[11px] text-slate-400">Resultado financeiro do período</p>
                 </div>
@@ -1465,7 +1466,7 @@ export default function App() {
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
                     ENTRADAS (RECEITAS) — {periodFilterMode === 'day' ? dayFormattedName : periodFilterMode === 'month' ? monthName : `Ano de ${currentYear}`}
                   </h3>
-                  <span className="text-xs font-bold text-emerald-700">Total: R$ {totalEntradasMes.toFixed(2)}</span>
+                  <span className="text-xs font-bold text-emerald-700">Total: {formatCurrency(totalEntradasMes)}</span>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -1526,7 +1527,7 @@ export default function App() {
                               <td className="p-3.5 text-slate-600">{t.category}</td>
                               <td className="p-3.5 text-slate-500">{t.dueDate || t.date}</td>
                               <td className="p-3.5 font-semibold text-emerald-600">
-                                + R$ {t.amount.toFixed(2)}
+                                + {formatCurrency(t.amount)}
                               </td>
                               <td className="p-3.5 text-center space-x-2">
                                 <button
@@ -1560,7 +1561,7 @@ export default function App() {
                     <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
                     SAÍDAS (DESPESAS) — {periodFilterMode === 'day' ? dayFormattedName : periodFilterMode === 'month' ? monthName : `Ano de ${currentYear}`}
                   </h3>
-                  <span className="text-xs font-bold text-rose-700">Total: R$ {totalSaidasMes.toFixed(2)}</span>
+                  <span className="text-xs font-bold text-rose-700">Total: {formatCurrency(totalSaidasMes)}</span>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -1621,7 +1622,7 @@ export default function App() {
                               <td className="p-3.5 text-slate-600">{t.category}</td>
                               <td className="p-3.5 text-slate-500">{t.dueDate || t.date}</td>
                               <td className="p-3.5 font-semibold text-rose-600">
-                                - R$ {t.amount.toFixed(2)}
+                                - {formatCurrency(t.amount)}
                               </td>
                               <td className="p-3.5 text-center space-x-2">
                                 <button
@@ -1685,7 +1686,7 @@ export default function App() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Gerenciamento de Cartões de Crédito — {monthName}</h3>
-                  <p className="text-xs text-slate-500">Situação da fatura: <strong className="text-indigo-700">{invoiceStatus}</strong> | Saldo anterior transportado: R$ {broughtForward.toFixed(2)}</p>
+                  <p className="text-xs text-slate-500">Situação da fatura: <strong className="text-indigo-700">{invoiceStatus}</strong> | Saldo anterior transportado: {formatCurrency(broughtForward)}</p>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -1712,19 +1713,19 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                   <span className="text-[11px] font-semibold uppercase text-slate-500">Total da Fatura</span>
-                  <h4 className="text-xl font-bold text-slate-900 mt-1">R$ {(invoiceMonthTotal + totalFeesThisMonth).toFixed(2)}</h4>
+                  <h4 className="text-xl font-bold text-slate-900 mt-1">{formatCurrency(invoiceMonthTotal + totalFeesThisMonth)}</h4>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                   <span className="text-[11px] font-semibold uppercase text-slate-500">Total Pago</span>
-                  <h4 className="text-xl font-bold text-emerald-600 mt-1">R$ {totalPaidThisMonth.toFixed(2)}</h4>
+                  <h4 className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(totalPaidThisMonth)}</h4>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                   <span className="text-[11px] font-semibold uppercase text-slate-500">Saldo Pendente</span>
-                  <h4 className="text-xl font-bold text-rose-600 mt-1">R$ {pendingInvoiceMonthTotal.toFixed(2)}</h4>
+                  <h4 className="text-xl font-bold text-rose-600 mt-1">{formatCurrency(pendingInvoiceMonthTotal)}</h4>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                   <span className="text-[11px] font-semibold uppercase text-slate-500">Limite Disponível</span>
-                  <h4 className="text-xl font-bold text-emerald-600 mt-1">R$ {activeCardLimit.available.toFixed(2)}</h4>
+                  <h4 className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(activeCardLimit.available)}</h4>
                 </div>
               </div>
             </div>
@@ -1744,7 +1745,7 @@ export default function App() {
                         <div className="text-slate-400 text-[11px]">Vencimento: {t.dueDate || t.date} | Categoria: {t.category}</div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="font-bold text-rose-600">R$ {t.amount.toFixed(2)}</span>
+                        <span className="font-bold text-rose-600">{formatCurrency(t.amount)}</span>
                         <button
                           onClick={() => openEditModal(t)}
                           className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
@@ -1780,7 +1781,7 @@ export default function App() {
                         <div className="text-slate-400 text-[11px]">Previsão: {t.dueDate || t.date} | Categoria: {t.category}</div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="font-bold text-emerald-600">R$ {t.amount.toFixed(2)}</span>
+                        <span className="font-bold text-emerald-600">{formatCurrency(t.amount)}</span>
                         <button
                           onClick={() => openEditModal(t)}
                           className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
@@ -1810,11 +1811,11 @@ export default function App() {
                   <div key={idx} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-bold text-indigo-900 uppercase">{p.name}</span>
-                      <span className={`text-xs font-bold ${p.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>R$ {p.balance.toFixed(2)}</span>
+                      <span className={`text-xs font-bold ${p.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatCurrency(p.balance)}</span>
                     </div>
                     <div className="text-xs text-slate-500 flex justify-between">
-                      <span>Entradas: <strong className="text-emerald-600">+R$ {p.income.toFixed(2)}</strong></span>
-                      <span>Saídas: <strong className="text-rose-600">-R$ {p.expense.toFixed(2)}</strong></span>
+                      <span>Entradas: <strong className="text-emerald-600">+{formatCurrency(p.income)}</strong></span>
+                      <span>Saídas: <strong className="text-rose-600">-{formatCurrency(p.expense)}</strong></span>
                     </div>
                   </div>
                 ))}
@@ -1840,7 +1841,7 @@ export default function App() {
                       <div className="flex justify-between items-center text-xs font-bold text-slate-700">
                         <span>{cat}</span>
                         <span className={isOver ? 'text-rose-600 font-extrabold' : 'text-slate-500'}>
-                          R$ {spent.toFixed(2)} / {budgetLimit > 0 ? `R$ ${budgetLimit.toFixed(2)}` : 'Sem meta'}
+                          {formatCurrency(spent)} / {budgetLimit > 0 ? formatCurrency(budgetLimit) : 'Sem meta'}
                         </span>
                       </div>
                       {budgetLimit > 0 && (
@@ -2185,7 +2186,7 @@ export default function App() {
                         <td className="p-3 text-slate-600">{t.category}</td>
                         <td className="p-3 text-slate-500">{t.dueDate || t.date}</td>
                         <td className={`p-3 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          R$ {t.amount.toFixed(2)}
+                          {formatCurrency(t.amount)}
                         </td>
                         <td className="p-3 text-center">
                           <button
@@ -2226,7 +2227,7 @@ export default function App() {
             <div className="space-y-2 text-center">
               <h3 className="text-lg font-bold text-slate-900">Excluir Lançamento</h3>
               <p className="text-sm text-slate-500">
-                Você está prestes a enviar para a lixeira: <strong className="text-slate-800">{transactionToDelete.description}</strong> (R$ {transactionToDelete.amount.toFixed(2)})
+                Você está prestes a enviar para a lixeira: <strong className="text-slate-800">{transactionToDelete.description}</strong> ({formatCurrency(transactionToDelete.amount)})
               </p>
             </div>
 
@@ -2282,7 +2283,7 @@ export default function App() {
                 Você selecionou <strong className="text-slate-800">{selectedTransactionIds.length}</strong> lançamento(s).
               </p>
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 font-bold text-rose-600 text-base">
-                Valor Total Envolvido: R$ {batchTotalAmount.toFixed(2)}
+                Valor Total Envolvido: {formatCurrency(batchTotalAmount)}
               </div>
             </div>
 
@@ -2344,7 +2345,7 @@ export default function App() {
                   <input
                     type="text"
                     required
-                    placeholder="Ex: 1365,11"
+                    placeholder="Ex: 1.365,11"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
