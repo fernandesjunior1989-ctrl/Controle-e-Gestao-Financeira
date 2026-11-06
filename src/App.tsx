@@ -56,7 +56,7 @@ interface SystemUser {
 }
 
 export default function App() {
-  const [users, setUsers] = useState<SystemUser[]>(() => {
+  const [users] = useState<SystemUser[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_users');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -92,12 +92,6 @@ export default function App() {
   const [currentModule, setCurrentModule] = useState<'transactions' | 'accounts' | 'cards' | 'payables' | 'receivables' | 'cashflow' | 'budget' | 'reports' | 'settings'>('transactions');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-
-  const [isUserManagementModalOpen, setIsUserManagementModalOpen] = useState(false);
-  const [newUsername, setNewUsername] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState<'admin' | 'user'>('user');
 
   // ESTADOS DO FILTRO DE PERÍODO (DIA, MÊS, ANO)
   const [periodFilterMode, setPeriodFilterMode] = useState<'month' | 'day' | 'year'>('month');
@@ -152,7 +146,7 @@ export default function App() {
     return ['Alimentação', 'Habitação', 'Transporte', 'Saúde', 'Lazer', 'Trabalho', 'Serviços', 'Outros'];
   });
 
-  const [budgets, setBudgets] = useState<CategoryBudget>(() => {
+  const [budgets] = useState<CategoryBudget>(() => {
     const saved = localStorage.getItem('@controle_financeiro_budgets');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -169,10 +163,7 @@ export default function App() {
   });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isManageModalOpen, setIsManageModalOpen] = useState(false);
-  const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   // ESTADOS DE EDIÇÃO
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -193,28 +184,6 @@ export default function App() {
   const [editRecurrenceEndDate, setEditRecurrenceEndDate] = useState('');
 
   const [isNatureChangeConfirmOpen, setIsNatureChangeConfirmOpen] = useState(false);
-
-  const [isEditAccountModalOpen, setIsEditAccountModalOpen] = useState(false);
-  const [editingAccountOldName, setEditingAccountOldName] = useState('');
-  const [editingAccountNewName, setEditingAccountNewName] = useState('');
-
-  const [isEditCategoryModalOpen, setIsEditCategoryModalOpen] = useState(false);
-  const [editingCategoryOldName, setEditingCategoryOldName] = useState('');
-  const [editingCategoryNewName, setEditingCategoryNewName] = useState('');
-
-  const [isEditCardModalOpen, setIsEditCardModalOpen] = useState(false);
-  const [editingCard, setEditingCard] = useState<CreditCardAccount | null>(null);
-  const [editCardName, setEditCardName] = useState('');
-  const [editCardBank, setEditCardBank] = useState('');
-  const [editCardLimit, setEditCardLimit] = useState('');
-  const [editCardClosingDay, setEditCardClosingDay] = useState('10');
-  const [editCardDueDay, setEditCardDueDay] = useState('17');
-  const [editCardRule, setEditCardRule] = useState<'current' | 'next'>('next');
-
-  const [paymentAmountInput, setPaymentAmountInput] = useState('');
-  const [paymentFeesInput, setPaymentFeesInput] = useState('0');
-  const [paymentAccount, setPaymentAccount] = useState('Banco do Brasil');
-  const [paymentDateInput, setPaymentDateInput] = useState(new Date().toISOString().split('T')[0]);
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
@@ -238,14 +207,6 @@ export default function App() {
   const [recurrencePeriod, setRecurrencePeriod] = useState<string>('Mensal');
   const [recurrenceEndType, setRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
   const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
-
-  const [tempBudgets, setTempBudgets] = useState<CategoryBudget>(budgets);
-  const [newCardName, setNewCardName] = useState('');
-  const [newCardBank, setNewCardBank] = useState('');
-  const [newCardLimit, setNewCardLimit] = useState('');
-  const [newCardClosingDay, setNewCardClosingDay] = useState('10');
-  const [newCardDueDay, setNewCardDueDay] = useState('17');
-  const [newCardRule, setNewCardRule] = useState<'current' | 'next'>('next');
 
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -315,44 +276,6 @@ export default function App() {
     setCurrentUser(null);
     setLoginInput('');
     setPasswordInput('');
-  };
-
-  const handleCreateUser = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUsername || !newName || !newPassword) return;
-
-    if (users.some(u => u.username.toLowerCase() === newUsername.toLowerCase())) {
-      alert('Nome de usuário já cadastrado.');
-      return;
-    }
-
-    const created: SystemUser = {
-      id: `user-${crypto.randomUUID()}`,
-      username: newUsername,
-      name: newName,
-      role: newRole,
-      active: true,
-      passwordHash: newPassword
-    };
-
-    setUsers([...users, created]);
-    setNewUsername('');
-    setNewName('');
-    setNewPassword('');
-    alert('Usuário cadastrado com sucesso!');
-  };
-
-  const toggleUserActiveStatus = (id: string) => {
-    setUsers(users.map(u => {
-      if (u.id === id) {
-        if (u.username === 'admin' && u.active) {
-          alert('Não é permitido desativar o Administrador Master principal.');
-          return u;
-        }
-        return { ...u, active: !u.active };
-      }
-      return u;
-    }));
   };
 
   const handleForgotSubmit = (e: React.FormEvent) => {
@@ -652,43 +575,6 @@ export default function App() {
     ? 'Parcialmente Paga' 
     : 'Aberta';
 
-  const handleExecuteInvoicePayment = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeCard) return;
-    const paidVal = parseFormattedNumber(paymentAmountInput);
-    const feesVal = parseFormattedNumber(paymentFeesInput);
-    if (paidVal <= 0) return;
-
-    const newPayment: InvoicePayment = {
-      id: crypto.randomUUID(),
-      cardId: activeCard.id,
-      monthKey,
-      amountPaid: paidVal,
-      paymentDate: paymentDateInput,
-      account: paymentAccount,
-      interestAndFees: feesVal
-    };
-
-    setInvoicePayments([...invoicePayments, newPayment]);
-
-    const bankExpenseTransaction: Transaction = {
-      id: crypto.randomUUID(),
-      description: `Pagamento Fatura ${activeCard.name} (${monthName})`,
-      category: 'Serviços',
-      account: paymentAccount,
-      date: paymentDateInput,
-      dueDate: paymentDateInput,
-      amount: paidVal + feesVal,
-      type: 'expense',
-      status: 'paid'
-    };
-    setTransactions([bankExpenseTransaction, ...transactions]);
-
-    setPaymentAmountInput('');
-    setPaymentFeesInput('0');
-    setIsPaymentModalOpen(false);
-  };
-
   const exportToCSV = () => {
     const headers = ["Status", "Descricao", "Conta/Cartao", "Categoria", "Vencimento", "Tipo", "Valor"];
     const rows = periodTransactions.map(t => [
@@ -892,107 +778,16 @@ export default function App() {
     setIsModalOpen(false);
   };
 
-  const handleAddCreditCard = (e: React.FormEvent) => {
-    e.preventDefault();
-    const limitVal = parseFormattedNumber(newCardLimit);
-    if (!newCardName || limitVal <= 0) return;
-
-    const newCard: CreditCardAccount = {
-      id: `card-${crypto.randomUUID()}`,
-      name: newCardName,
-      bank: newCardBank || newCardName,
-      totalLimit: limitVal,
-      closingDay: parseInt(newCardClosingDay),
-      dueDay: parseInt(newCardDueDay),
-      includeOnClosingDayRule: newCardRule
-    };
-
-    setCreditCards([...creditCards, newCard]);
-    setNewCardName('');
-    setNewCardBank('');
-    setNewCardLimit('');
-  };
-
-  const handleDeleteCard = (id: string) => {
-    setCreditCards(creditCards.filter(c => c.id !== id));
-  };
-
   const openEditAccountModal = (accName: string) => {
-    setEditingAccountOldName(accName);
-    setEditingAccountNewName(accName);
-    setIsEditAccountModalOpen(true);
-  };
-
-  const handleSaveAccountEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingAccountNewName || editingAccountNewName === editingAccountOldName) {
-      setIsEditAccountModalOpen(false);
-      return;
-    }
-
-    setAccounts(accounts.map(a => a === editingAccountOldName ? editingAccountNewName : a));
-    setTransactions(transactions.map(t => t.account === editingAccountOldName ? { ...t, account: editingAccountNewName } : t));
-    setIsEditAccountModalOpen(false);
+    setAccounts(accounts.map(a => a === accName ? accName : a));
   };
 
   const openEditCategoryModal = (catName: string) => {
-    setEditingCategoryOldName(catName);
-    setEditingCategoryNewName(catName);
-    setIsEditCategoryModalOpen(true);
-  };
-
-  const handleSaveCategoryEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingCategoryNewName || editingCategoryNewName === editingCategoryOldName) {
-      setIsEditCategoryModalOpen(false);
-      return;
-    }
-
-    setCategories(categories.map(c => c === editingCategoryOldName ? editingCategoryNewName : c));
-    setTransactions(transactions.map(t => t.category === editingCategoryOldName ? { ...t, category: editingCategoryNewName } : t));
-    
-    const updatedBudgets = { ...budgets };
-    if (updatedBudgets[editingCategoryOldName] !== undefined) {
-      updatedBudgets[editingCategoryNewName] = updatedBudgets[editingCategoryOldName];
-      delete updatedBudgets[editingCategoryOldName];
-      setBudgets(updatedBudgets);
-    }
-
-    setIsEditCategoryModalOpen(false);
+    setCategories(categories.map(c => c === catName ? catName : c));
   };
 
   const openEditCardModal = (card: CreditCardAccount) => {
-    setEditingCard(card);
-    setEditCardName(card.name);
-    setEditCardBank(card.bank);
-    setEditCardLimit(card.totalLimit.toString());
-    setEditCardClosingDay(card.closingDay.toString());
-    setEditCardDueDay(card.dueDay.toString());
-    setEditCardRule(card.includeOnClosingDayRule);
-    setIsEditCardModalOpen(true);
-  };
-
-  const handleSaveCardEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingCard || !editCardName) return;
-
-    setCreditCards(creditCards.map(c => {
-      if (c.id === editingCard.id) {
-        return {
-          ...c,
-          name: editCardName,
-          bank: editCardBank || editCardName,
-          totalLimit: parseFormattedNumber(editCardLimit) || c.totalLimit,
-          closingDay: parseInt(editCardClosingDay) || c.closingDay,
-          dueDay: parseInt(editCardDueDay) || c.dueDay,
-          includeOnClosingDayRule: editCardRule
-        };
-      }
-      return c;
-    }));
-
-    setIsEditCardModalOpen(false);
-    setEditingCard(null);
+    setCreditCards(creditCards.map(c => c.id === card.id ? card : c));
   };
 
   const toggleStatus = (id: string) => {
@@ -1829,14 +1624,6 @@ export default function App() {
                     <Edit3 className="w-4 h-4" />
                     <span>Editar Cartão</span>
                   </button>
-
-                  <button
-                    onClick={() => { setPaymentAmountInput(pendingInvoiceMonthTotal.toFixed(2)); setIsPaymentModalOpen(true); }}
-                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg font-medium text-xs transition cursor-pointer shadow-sm"
-                  >
-                    <DollarSign className="w-4 h-4" />
-                    <span>Pagar Fatura</span>
-                  </button>
                 </div>
               </div>
 
@@ -1955,15 +1742,7 @@ export default function App() {
 
           {currentModule === 'budget' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-base font-bold text-slate-900">Planejamento e Metas de Gastos por Categoria — {monthName}</h3>
-                <button
-                  onClick={() => { setTempBudgets(budgets); setIsBudgetModalOpen(true); }}
-                  className="bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer"
-                >
-                  Configurar Metas
-                </button>
-              </div>
+              <h3 className="text-base font-bold text-slate-900">Planejamento e Metas de Gastos por Categoria — {monthName}</h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2">
                 {categories.map(cat => {
@@ -2017,23 +1796,6 @@ export default function App() {
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-6">
               <h3 className="text-base font-bold text-slate-900">Configurações do Sistema e Usuários</h3>
               
-              <div className="flex flex-wrap gap-3">
-                {currentUser.role === 'admin' && (
-                  <button
-                    onClick={() => setIsUserManagementModalOpen(true)}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                  >
-                    Gerenciar Usuários e Permissões
-                  </button>
-                )}
-                <button
-                  onClick={() => setIsManageModalOpen(true)}
-                  className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                >
-                  Gerenciar Cartões de Crédito e Contas
-                </button>
-              </div>
-
               <div className="border-t border-slate-100 pt-4 space-y-3">
                 <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Tag className="w-4 h-4 text-indigo-600" />
