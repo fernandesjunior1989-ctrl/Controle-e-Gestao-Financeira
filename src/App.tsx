@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   PlusCircle, Trash2, X, Save, 
-  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, Shield, KeyRound, UserCheck, UserX, Menu, ArrowDownRight
+  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, Shield, KeyRound, UserCheck, UserX, Menu, ArrowDownRight, Tag
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -137,7 +137,7 @@ export default function App() {
     return [];
   });
 
-  const [categories] = useState<string[]>(() => {
+  const [categories, setCategories] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_categories');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -153,7 +153,7 @@ export default function App() {
     return { 'Alimentação': 1000, 'Habitação': 2000, 'Transporte': 600 };
   });
 
-  const [accounts] = useState<string[]>(() => {
+  const [accounts, setAccounts] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_accounts');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -167,6 +167,7 @@ export default function App() {
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
+  // Estados de edição de Lançamento
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editScope, setEditScope] = useState<'single' | 'forward'>('single');
@@ -176,6 +177,26 @@ export default function App() {
   const [editDueDate, setEditDueDate] = useState('');
   const [editType, setEditType] = useState<'income' | 'expense'>('expense');
   const [isNatureChangeConfirmOpen, setIsNatureChangeConfirmOpen] = useState(false);
+
+  // Estados de Edição de Conta Bancária
+  const [isEditAccountModalOpen, setIsEditAccountModalOpen] = useState(false);
+  const [editingAccountOldName, setEditingAccountOldName] = useState('');
+  const [editingAccountNewName, setEditingAccountNewName] = useState('');
+
+  // Estados de Edição de Categoria
+  const [isEditCategoryModalOpen, setIsEditCategoryModalOpen] = useState(false);
+  const [editingCategoryOldName, setEditingCategoryOldName] = useState('');
+  const [editingCategoryNewName, setEditingCategoryNewName] = useState('');
+
+  // Estados de Edição de Cartão de Crédito
+  const [isEditCardModalOpen, setIsEditCardModalOpen] = useState(false);
+  const [editingCard, setEditingCard] = useState<CreditCardAccount | null>(null);
+  const [editCardName, setEditCardName] = useState('');
+  const [editCardBank, setEditCardBank] = useState('');
+  const [editCardLimit, setEditCardLimit] = useState('');
+  const [editCardClosingDay, setEditCardClosingDay] = useState('10');
+  const [editCardDueDay, setEditCardDueDay] = useState('17');
+  const [editCardRule, setEditCardRule] = useState<'current' | 'next'>('next');
 
   const [paymentAmountInput, setPaymentAmountInput] = useState('');
   const [paymentFeesInput, setPaymentFeesInput] = useState('0');
@@ -481,7 +502,6 @@ export default function App() {
     return targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth;
   });
 
-  // 3 Indicadores de Resumo Financeiro (Regra 3)
   const totalEntradasMes = monthTransactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + t.amount, 0);
@@ -832,6 +852,85 @@ export default function App() {
     setCreditCards(creditCards.filter(c => c.id !== id));
   };
 
+  // Funções de Edição para cadastros gerais (Contas, Cartões, Categorias)
+  const openEditAccountModal = (accName: string) => {
+    setEditingAccountOldName(accName);
+    setEditingAccountNewName(accName);
+    setIsEditAccountModalOpen(true);
+  };
+
+  const handleSaveAccountEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAccountNewName || editingAccountNewName === editingAccountOldName) {
+      setIsEditAccountModalOpen(false);
+      return;
+    }
+
+    setAccounts(accounts.map(a => a === editingAccountOldName ? editingAccountNewName : a));
+    setTransactions(transactions.map(t => t.account === editingAccountOldName ? { ...t, account: editingAccountNewName } : t));
+    setIsEditAccountModalOpen(false);
+  };
+
+  const openEditCategoryModal = (catName: string) => {
+    setEditingCategoryOldName(catName);
+    setEditingCategoryNewName(catName);
+    setIsEditCategoryModalOpen(true);
+  };
+
+  const handleSaveCategoryEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategoryNewName || editingCategoryNewName === editingCategoryOldName) {
+      setIsEditCategoryModalOpen(false);
+      return;
+    }
+
+    setCategories(categories.map(c => c === editingCategoryOldName ? editingCategoryNewName : c));
+    setTransactions(transactions.map(t => t.category === editingCategoryOldName ? { ...t, category: editingCategoryNewName } : t));
+    
+    const updatedBudgets = { ...budgets };
+    if (updatedBudgets[editingCategoryOldName] !== undefined) {
+      updatedBudgets[editingCategoryNewName] = updatedBudgets[editingCategoryOldName];
+      delete updatedBudgets[editingCategoryOldName];
+      setBudgets(updatedBudgets);
+    }
+
+    setIsEditCategoryModalOpen(false);
+  };
+
+  const openEditCardModal = (card: CreditCardAccount) => {
+    setEditingCard(card);
+    setEditCardName(card.name);
+    setEditCardBank(card.bank);
+    setEditCardLimit(card.totalLimit.toString());
+    setEditCardClosingDay(card.closingDay.toString());
+    setEditCardDueDay(card.dueDay.toString());
+    setEditCardRule(card.includeOnClosingDayRule);
+    setIsEditCardModalOpen(true);
+  };
+
+  const handleSaveCardEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCard || !editCardName) return;
+
+    setCreditCards(creditCards.map(c => {
+      if (c.id === editingCard.id) {
+        return {
+          ...c,
+          name: editCardName,
+          bank: editCardBank || editCardName,
+          totalLimit: parseFloat(editCardLimit) || c.totalLimit,
+          closingDay: parseInt(editCardClosingDay) || c.closingDay,
+          dueDay: parseInt(editCardDueDay) || c.dueDay,
+          includeOnClosingDayRule: editCardRule
+        };
+      }
+      return c;
+    }));
+
+    setIsEditCardModalOpen(false);
+    setEditingCard(null);
+  };
+
   const toggleStatus = (id: string) => {
     setTransactions(transactions.map(t => {
       if (t.id === id) {
@@ -973,7 +1072,6 @@ export default function App() {
     }));
   };
 
-  // Filtragem separada para Entradas e Saídas (Regra 4)
   const baseFiltered = monthTransactions.filter(t => {
     const matchesCategory = selectedCategoryFilter === 'all' || t.category === selectedCategoryFilter;
     const matchesSearch = searchQuery === '' || 
@@ -1141,11 +1239,10 @@ export default function App() {
 
         <main className="p-4 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
           
-          {/* MÓDULO 1: LANÇAMENTOS (Com Seções Separadas) */}
+          {/* MÓDULO 1: LANÇAMENTOS */}
           {currentModule === 'transactions' && (
             <div className="space-y-6">
               
-              {/* 3 Indicadores de Resumo Financeiro (Regra 3) */}
               <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs space-y-1">
                   <span className="text-[11px] font-bold uppercase text-emerald-700 tracking-wider">Total de Entradas</span>
@@ -1168,7 +1265,6 @@ export default function App() {
                 </div>
               </section>
 
-              {/* Filtros de Mês, Ano e Busca (Regra 4) */}
               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3 w-full md:w-auto">
                   <button onClick={handlePrevMonth} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer">
@@ -1220,7 +1316,6 @@ export default function App() {
                   </select>
 
                   <button
-                    export-to-csv=""
                     onClick={exportToCSV}
                     className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
                   >
@@ -1242,7 +1337,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* SEÇÃO 1: ENTRADAS (RECEITAS) (Regra 1 e 5) */}
+              {/* SEÇÃO 1: ENTRADAS (RECEITAS) */}
               <div className="bg-white rounded-xl border border-emerald-200 shadow-xs overflow-hidden space-y-2">
                 <div className="p-4 bg-emerald-50/70 border-b border-emerald-100 flex items-center justify-between">
                   <h3 className="text-sm font-bold text-emerald-900 flex items-center gap-2">
@@ -1337,7 +1432,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* SEÇÃO 2: SAÍDAS (DESPESAS) (Regra 2 e 5) */}
+              {/* SEÇÃO 2: SAÍDAS (DESPESAS) */}
               <div className="bg-white rounded-xl border border-rose-200 shadow-xs overflow-hidden space-y-2">
                 <div className="p-4 bg-rose-50/70 border-b border-rose-100 flex items-center justify-between">
                   <h3 className="text-sm font-bold text-rose-900 flex items-center gap-2">
@@ -1435,7 +1530,7 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 2: CONTAS BANCÁRIAS */}
+          {/* MÓDULO 2: CONTAS BANCÁRIAS (Com Edição) */}
           {currentModule === 'accounts' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-base font-bold text-slate-900">Contas Bancárias e Carteiras Cadastradas</h3>
@@ -1448,14 +1543,23 @@ export default function App() {
                       <span className="text-xs font-bold text-slate-800">{acc}</span>
                       <p className="text-[10px] text-slate-400 mt-0.5">Conta ativa no sistema</p>
                     </div>
-                    <Building2 className="w-5 h-5 text-indigo-600" />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openEditAccountModal(acc)}
+                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                        title="Editar Conta"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <Building2 className="w-5 h-5 text-indigo-600" />
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* MÓDULO 3: CARTÕES DE CRÉDITO */}
+          {/* MÓDULO 3: CARTÕES DE CRÉDITO (Com Edição) */}
           {currentModule === 'cards' && creditCards.length > 0 && activeCard && activeCardLimit && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -1474,6 +1578,14 @@ export default function App() {
                       <option key={card.id} value={card.id}>{card.name} ({card.bank})</option>
                     ))}
                   </select>
+
+                  <button
+                    onClick={() => openEditCardModal(activeCard)}
+                    className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3.5 py-2 rounded-lg font-medium text-xs transition cursor-pointer"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    <span>Editar Cartão</span>
+                  </button>
 
                   <button
                     onClick={() => { setPaymentAmountInput(pendingInvoiceMonthTotal.toFixed(2)); setIsPaymentModalOpen(true); }}
@@ -1523,6 +1635,13 @@ export default function App() {
                       <div className="flex items-center gap-3">
                         <span className="font-bold text-rose-600">R$ {t.amount.toFixed(2)}</span>
                         <button
+                          onClick={() => openEditModal(t)}
+                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                          title="Editar"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => toggleStatus(t.id)}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
                         >
@@ -1552,6 +1671,13 @@ export default function App() {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="font-bold text-emerald-600">R$ {t.amount.toFixed(2)}</span>
+                        <button
+                          onClick={() => openEditModal(t)}
+                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                          title="Editar"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => toggleStatus(t.id)}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
@@ -1649,11 +1775,12 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 9: CONFIGURAÇÕES */}
+          {/* MÓDULO 9: CONFIGURAÇÕES (Com Edição de Categorias) */}
           {currentModule === 'settings' && (
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-6">
               <h3 className="text-base font-bold text-slate-900">Configurações do Sistema e Usuários</h3>
-              <div className="flex flex-wrap gap-3 pt-2">
+              
+              <div className="flex flex-wrap gap-3">
                 {currentUser.role === 'admin' && (
                   <button
                     onClick={() => setIsUserManagementModalOpen(true)}
@@ -1669,11 +1796,134 @@ export default function App() {
                   Gerenciar Cartões de Crédito e Contas
                 </button>
               </div>
+
+              <div className="border-t border-slate-100 pt-4 space-y-3">
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-indigo-600" />
+                  Gerenciar e Editar Categorias Financeiras
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                  {categories.map(cat => (
+                    <div key={cat} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
+                      <span className="font-semibold text-slate-800">{cat}</span>
+                      <button
+                        onClick={() => openEditCategoryModal(cat)}
+                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                        title="Editar Categoria"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
         </main>
       </div>
+
+      {/* MODAL DE EDIÇÃO DE CONTA BANCÁRIA */}
+      {isEditAccountModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">Editar Conta Bancária</h3>
+              <button onClick={() => setIsEditAccountModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveAccountEdit} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold uppercase text-slate-500 mb-1">Nome da Conta</label>
+                <input
+                  type="text"
+                  required
+                  value={editingAccountNewName}
+                  onChange={(e) => setEditingAccountNewName(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setIsEditAccountModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold">Salvar Alterações</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDIÇÃO DE CATEGORIA */}
+      {isEditCategoryModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">Editar Categoria</h3>
+              <button onClick={() => setIsEditCategoryModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveCategoryEdit} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold uppercase text-slate-500 mb-1">Nome da Categoria</label>
+                <input
+                  type="text"
+                  required
+                  value={editingCategoryNewName}
+                  onChange={(e) => setEditingCategoryNewName(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setIsEditCategoryModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold">Salvar Alterações</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDIÇÃO DE CARTÃO DE CRÉDITO */}
+      {isEditCardModalOpen && editingCard && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">Editar Cartão de Crédito</h3>
+              <button onClick={() => setIsEditCardModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveCardEdit} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold uppercase text-slate-500 mb-1">Nome do Cartão</label>
+                <input type="text" required value={editCardName} onChange={(e) => setEditCardName(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
+              </div>
+              <div>
+                <label className="block font-semibold uppercase text-slate-500 mb-1">Instituição / Banco</label>
+                <input type="text" value={editCardBank} onChange={(e) => setEditCardBank(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
+              </div>
+              <div>
+                <label className="block font-semibold uppercase text-slate-500 mb-1">Limite Total (R$)</label>
+                <input type="number" step="0.01" required value={editCardLimit} onChange={(e) => setEditCardLimit(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold uppercase text-slate-500 mb-1">Dia Fechamento</label>
+                  <input type="number" min="1" max="31" required value={editCardClosingDay} onChange={(e) => setEditCardClosingDay(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block font-semibold uppercase text-slate-500 mb-1">Dia Vencimento</label>
+                  <input type="number" min="1" max="31" required value={editCardDueDay} onChange={(e) => setEditCardDueDay(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button type="button" onClick={() => setIsEditCardModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold">Salvar Alterações</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE GERENCIAMENTO DE USUÁRIOS */}
       {isUserManagementModalOpen && currentUser.role === 'admin' && (
@@ -2349,12 +2599,21 @@ export default function App() {
                           Fecha dia {card.closingDay} | Vence dia {card.dueDay} | R$ {card.totalLimit.toFixed(2)}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleDeleteCard(card.id)}
-                        className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => openEditCardModal(card)}
+                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                          title="Editar Cartão"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCard(card.id)}
+                          className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
