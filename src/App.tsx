@@ -93,18 +93,16 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // ESTADOS DO FILTRO DE PERÍODO (DIA, MÊS, ANO)
+  // ESTADOS DO FILTRO DE PERÍODO
   const [periodFilterMode, setPeriodFilterMode] = useState<'month' | 'day' | 'year' | 'custom'>('month');
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   });
 
-  // ESTADOS PARA FILTRO CUSTOMIZADO POR DATA NOS LANÇAMENTOS
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // ANOS DINÂMICOS AUTOMÁTICOS
   const currentSystemYear = new Date().getFullYear();
   const availableYears = Array.from({ length: 18 }, (_, i) => (currentSystemYear - 2) + i);
 
@@ -166,11 +164,24 @@ export default function App() {
     return ['Banco do Brasil', 'Bradesco', 'Carteira'];
   });
 
+  // MODAIS DE EDIÇÃO DE CONTAS E CARTÕES
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [editingAccountOldName, setEditingAccountOldName] = useState<string | null>(null);
+  const [accountNameInput, setAccountNameInput] = useState('');
+
+  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+  const [editingCard, setEditingCard] = useState<CreditCardAccount | null>(null);
+  const [cardNameInput, setCardNameInput] = useState('');
+  const [cardBankInput, setCardBankInput] = useState('');
+  const [cardLimitInput, setCardLimitInput] = useState('');
+  const [cardClosingInput, setCardClosingInput] = useState('10');
+  const [cardDueInput, setCardDueInput] = useState('17');
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [duplicateMessage, setDuplicateMessage] = useState<string | null>(null);
 
-  // ESTADOS DE EDIÇÃO
+  // ESTADOS DE EDIÇÃO DE LANÇAMENTO
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editScope, setEditScope] = useState<'single' | 'forward' | 'all'>('single');
@@ -220,7 +231,6 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCardView, setSelectedCardView] = useState<string>(creditCards[0]?.id || '');
 
-  // FUNÇÃO AUXILIAR PARA FORMATAR MOEDA NO PADRÃO BRASILEIRO (R$ X.XXX,XX)
   const formatCurrency = (val: number): string => {
     return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
@@ -425,6 +435,65 @@ export default function App() {
       </div>
     );
   }
+
+  // FUNÇÕES DE EDIÇÃO DE CONTAS E CARTÕES
+  const openEditAccountModal = (accName: string) => {
+    setEditingAccountOldName(accName);
+    setAccountNameInput(accName);
+    setIsAccountModalOpen(true);
+  };
+
+  const handleSaveAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accountNameInput.trim() || !editingAccountOldName) return;
+
+    const trimmedNew = accountNameInput.trim();
+    setAccounts(accounts.map(a => a === editingAccountOldName ? trimmedNew : a));
+    
+    // Atualizar nas transações associadas
+    setTransactions(transactions.map(t => {
+      if (t.account === editingAccountOldName) {
+        return { ...t, account: trimmedNew };
+      }
+      return t;
+    }));
+
+    setIsAccountModalOpen(false);
+    setEditingAccountOldName(null);
+    setAccountNameInput('');
+  };
+
+  const openEditCardModal = (card: CreditCardAccount) => {
+    setEditingCard(card);
+    setCardNameInput(card.name);
+    setCardBankInput(card.bank);
+    setCardLimitInput(card.totalLimit.toString());
+    setCardClosingInput(card.closingDay.toString());
+    setCardDueInput(card.dueDay.toString());
+    setIsCardModalOpen(true);
+  };
+
+  const handleSaveCard = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCard || !cardNameInput.trim()) return;
+
+    const limitVal = parseFormattedNumber(cardLimitInput);
+    const closingVal = parseInt(cardClosingInput) || 10;
+    const dueVal = parseInt(cardDueInput) || 17;
+
+    const updatedCard: CreditCardAccount = {
+      ...editingCard,
+      name: cardNameInput.trim(),
+      bank: cardBankInput.trim() || editingCard.bank,
+      totalLimit: limitVal,
+      closingDay: closingVal,
+      dueDay: dueVal
+    };
+
+    setCreditCards(creditCards.map(c => c.id === updatedCard.id ? updatedCard : c));
+    setIsCardModalOpen(false);
+    setEditingCard(null);
+  };
 
   // NAVEGAÇÃO TEMPORAL
   const handlePrevPeriod = () => {
@@ -857,16 +926,8 @@ export default function App() {
     setIsModalOpen(false);
   };
 
-  const openEditAccountModal = (accName: string) => {
-    setAccounts(accounts.map(a => a === accName ? accName : a));
-  };
-
   const openEditCategoryModal = (catName: string) => {
     setCategories(categories.map(c => c === catName ? catName : c));
-  };
-
-  const openEditCardModal = (card: CreditCardAccount) => {
-    setCreditCards(creditCards.map(c => c.id === card.id ? card : c));
   };
 
   const toggleStatus = (id: string) => {
@@ -2003,6 +2064,134 @@ export default function App() {
 
         </main>
       </div>
+
+      {/* MODAL DE EDIÇÃO DE CONTA BANCÁRIA */}
+      {isAccountModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4 relative border border-slate-200">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">Editar Conta Bancária</h3>
+              <button onClick={() => setIsAccountModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveAccount} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold uppercase text-slate-500 mb-1">Nome da Conta / Carteira</label>
+                <input
+                  type="text"
+                  required
+                  value={accountNameInput}
+                  onChange={(e) => setAccountNameInput(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAccountModalOpen(false)}
+                  className="px-4 py-2 font-medium text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg cursor-pointer shadow-sm"
+                >
+                  Salvar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDIÇÃO DE CARTÃO DE CRÉDITO */}
+      {isCardModalOpen && editingCard && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 relative border border-slate-200">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">Editar Cartão de Crédito</h3>
+              <button onClick={() => setIsCardModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveCard} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold uppercase text-slate-500 mb-1">Nome do Cartão</label>
+                <input
+                  type="text"
+                  required
+                  value={cardNameInput}
+                  onChange={(e) => setCardNameInput(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold uppercase text-slate-500 mb-1">Instituição / Banco</label>
+                <input
+                  type="text"
+                  required
+                  value={cardBankInput}
+                  onChange={(e) => setCardBankInput(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold uppercase text-slate-500 mb-1">Limite Total (R$)</label>
+                <input
+                  type="text"
+                  required
+                  value={cardLimitInput}
+                  onChange={(e) => setCardLimitInput(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold uppercase text-slate-500 mb-1">Dia Fechamento</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    required
+                    value={cardClosingInput}
+                    onChange={(e) => setCardClosingInput(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold uppercase text-slate-500 mb-1">Dia Vencimento</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    required
+                    value={cardDueInput}
+                    onChange={(e) => setCardDueInput(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsCardModalOpen(false)}
+                  className="px-4 py-2 font-medium text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg cursor-pointer shadow-sm"
+                >
+                  Salvar Cartão
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE EDIÇÃO DE LANÇAMENTO E MODALIDADE */}
       {isEditModalOpen && editingTransaction && (
