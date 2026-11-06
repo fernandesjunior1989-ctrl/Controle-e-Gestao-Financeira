@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, Shield, KeyRound, UserCheck, UserX
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, Shield, KeyRound, UserCheck, UserX, Menu, PieChart, FileText, WalletCards, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -56,7 +56,7 @@ interface SystemUser {
 }
 
 export default function App() {
-  // Controle de Sessão e Autenticação (Regra 12)
+  // Controle de Sessão e Autenticação
   const [users, setUsers] = useState<SystemUser[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_users');
     if (saved) {
@@ -69,7 +69,7 @@ export default function App() {
         name: 'Administrador Master',
         role: 'admin',
         active: true,
-        passwordHash: 'admin123' // Em produção real, hash seguro
+        passwordHash: 'admin123'
       }
     ];
   });
@@ -90,6 +90,10 @@ export default function App() {
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState(false);
+
+  // Módulo Ativo de Navegação (Regra 2 e 3)
+  const [currentModule, setCurrentModule] = useState<'transactions' | 'accounts' | 'cards' | 'payables' | 'receivables' | 'cashflow' | 'budget' | 'reports' | 'settings'>('transactions');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Estados de Gerenciamento de Usuários
   const [isUserManagementModalOpen, setIsUserManagementModalOpen] = useState(false);
@@ -219,6 +223,7 @@ export default function App() {
 
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCardView, setSelectedCardView] = useState<string>(creditCards[0]?.id || '');
 
   useEffect(() => {
@@ -257,7 +262,6 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Funções de Autenticação (Regra 12)
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -273,6 +277,7 @@ export default function App() {
     }
 
     setCurrentUser(foundUser);
+    setCurrentModule('transactions'); // Redireciona para lançamentos (Regra 1)
   };
 
   const handleLogout = () => {
@@ -329,7 +334,6 @@ export default function App() {
     }, 2500);
   };
 
-  // Se não estiver autenticado, exibe a tela de login (Regra 12)
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
@@ -411,7 +415,6 @@ export default function App() {
           </form>
         </div>
 
-        {/* Modal de Recuperação de Senha */}
         {isForgotModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200">
@@ -487,31 +490,17 @@ export default function App() {
     return targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth;
   });
 
-  const totalReceitasCompetencia = monthTransactions
+  // Indicadores da Página Principal (Regra 1)
+  const totalReceitasMes = monthTransactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  const totalDespesasCompetencia = monthTransactions
+  const totalDespesasMes = monthTransactions
     .filter(t => t.type === 'expense')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  const resultadoMesCompetencia = totalReceitasCompetencia - totalDespesasCompetencia;
-
-  const receitasRecebidas = monthTransactions
-    .filter(t => t.type === 'income' && t.status === 'paid')
-    .reduce((acc, t) => acc + t.amount, 0);
-
-  const receitasPendentes = monthTransactions
-    .filter(t => t.type === 'income' && t.status === 'pending')
-    .reduce((acc, t) => acc + t.amount, 0);
-
-  const despesasPagas = monthTransactions
-    .filter(t => t.type === 'expense' && t.status === 'paid')
-    .reduce((acc, t) => acc + t.amount, 0);
-
-  const despesasPendentes = monthTransactions
-    .filter(t => t.type === 'expense' && t.status === 'pending')
-    .reduce((acc, t) => acc + t.amount, 0);
+  const saldoPeriodoMes = totalReceitasMes - totalDespesasMes;
+  const totalLancamentosMes = monthTransactions.length;
 
   const cashFlowProjections = Array.from({ length: 6 }, (_, index) => {
     const projDate = new Date(currentYear, currentMonth + index, 1);
@@ -989,10 +978,14 @@ export default function App() {
     }));
   };
 
+  // Filtros avançados para a tabela
   const filteredTransactions = monthTransactions.filter(t => {
     const matchesType = selectedTypeFilter === 'all' || t.type === selectedTypeFilter;
     const matchesCategory = selectedCategoryFilter === 'all' || t.category === selectedCategoryFilter;
-    return matchesType && matchesCategory;
+    const matchesSearch = searchQuery === '' || 
+      t.description.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      t.category.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesType && matchesCategory && matchesSearch;
   });
 
   const batchTotalAmount = transactions
@@ -1000,495 +993,609 @@ export default function App() {
     .reduce((acc, t) => acc + t.amount, 0);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
-        
-        {/* Cabeçalho */}
-        <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-              <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase ${currentUser.role === 'admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                {currentUser.role === 'admin' ? 'Administrador' : 'Usuário Comum'} ({currentUser.name})
-              </span>
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col md:flex-row">
+      
+      {/* MENU LATERAL DE NAVEGAÇÃO MODERNO (Regra 2 e 3) */}
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 transform transition-transform duration-200 ease-in-out md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col justify-between border-r border-slate-800 shadow-xl`}>
+        <div className="p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div>
+              <h2 className="font-bold text-white text-base tracking-wide">Gestão Financeira</h2>
+              <p className="text-[11px] text-slate-400">Painel Operacional</p>
             </div>
-            <p className="text-sm text-slate-500 mt-1">Sessão segura ativa | Autenticação validada</p>
+            <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {currentUser.role === 'admin' && (
-              <button
-                onClick={() => setIsUserManagementModalOpen(true)}
-                className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 px-3.5 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm"
-              >
-                <Shield className="w-4 h-4 text-indigo-600" />
-                <span>Gerenciar Usuários</span>
-              </button>
-            )}
+          <nav className="space-y-1.5">
             <button
-              onClick={() => setIsTrashModalOpen(true)}
-              className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 px-3.5 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm"
+              onClick={() => { setCurrentModule('transactions'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'transactions' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
             >
-              <Trash className="w-4 h-4 text-rose-600" />
-              <span>Lixeira ({trashedTransactions.length})</span>
+              <DollarSign className="w-4 h-4" />
+              <span>Lançamentos</span>
             </button>
+
             <button
-              onClick={() => { setTempBudgets(budgets); setIsBudgetModalOpen(true); }}
-              className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-3.5 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm"
+              onClick={() => { setCurrentModule('accounts'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'accounts' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
             >
-              <Target className="w-4 h-4 text-amber-600" />
-              <span>Metas</span>
+              <Building2 className="w-4 h-4" />
+              <span>Contas Bancárias</span>
             </button>
+
             <button
-              onClick={() => setIsManageModalOpen(true)}
-              className="flex items-center gap-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm"
+              onClick={() => { setCurrentModule('cards'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'cards' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Cartões de Crédito</span>
+            </button>
+
+            <button
+              onClick={() => { setCurrentModule('payables'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'payables' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
+            >
+              <Clock className="w-4 h-4" />
+              <span>Contas a Pagar</span>
+            </button>
+
+            <button
+              onClick={() => { setCurrentModule('receivables'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'receivables' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
+            >
+              <ArrowDownRight className="w-4 h-4" />
+              <span>Contas a Receber</span>
+            </button>
+
+            <button
+              onClick={() => { setCurrentModule('cashflow'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'cashflow' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
+            >
+              <TrendUp className="w-4 h-4" />
+              <span>Fluxo de Caixa</span>
+            </button>
+
+            <button
+              onClick={() => { setCurrentModule('budget'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'budget' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
+            >
+              <Target className="w-4 h-4" />
+              <span>Orçamento</span>
+            </button>
+
+            <button
+              onClick={() => { setCurrentModule('reports'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'reports' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>Relatórios</span>
+            </button>
+
+            <button
+              onClick={() => { setCurrentModule('settings'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'settings' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
             >
               <Settings className="w-4 h-4" />
-              <span>Cadastros</span>
+              <span>Configurações</span>
+            </button>
+          </nav>
+        </div>
+
+        <div className="p-4 border-t border-slate-800 bg-slate-950/50">
+          <div className="flex items-center justify-between text-xs">
+            <div>
+              <div className="font-bold text-white truncate max-w-[140px]">{currentUser.name}</div>
+              <div className="text-[10px] text-slate-400 capitalize">{currentUser.role === 'admin' ? 'Administrador' : 'Usuário'}</div>
+            </div>
+            <button
+              onClick={handleLogout}
+              title="Sair"
+              className="p-2 text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* CONTEÚDO PRINCIPAL */}
+      <div className="flex-1 flex flex-col min-w-0 md:pl-64">
+        
+        {/* Barra superior mobile / ações */}
+        <header className="bg-white border-b border-slate-200 px-4 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h1 className="text-base md:text-lg font-bold text-slate-900 capitalize">
+              {currentModule === 'transactions' && 'Lançamentos — Receitas e Despesas'}
+              {currentModule === 'accounts' && 'Contas Bancárias'}
+              {currentModule === 'cards' && 'Cartões de Crédito e Faturas'}
+              {currentModule === 'payables' && 'Contas a Pagar'}
+              {currentModule === 'receivables' && 'Contas a Receber'}
+              {currentModule === 'cashflow' && 'Fluxo de Caixa'}
+              {currentModule === 'budget' && 'Planejamento Orçamentário'}
+              {currentModule === 'reports' && 'Relatórios e Demonstrativos'}
+              {currentModule === 'settings' && 'Configurações e Usuários'}
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsTrashModalOpen(true)}
+              className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 px-3 py-2 rounded-lg font-medium transition cursor-pointer text-xs"
+            >
+              <Trash className="w-3.5 h-3.5 text-rose-600" />
+              <span className="hidden sm:inline">Lixeira</span> ({trashedTransactions.length})
             </button>
             <button
               onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-medium transition shadow-sm cursor-pointer text-sm"
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition shadow-sm cursor-pointer text-xs"
             >
-              <PlusCircle className="w-5 h-5" />
+              <PlusCircle className="w-4 h-4" />
               <span>Novo Lançamento</span>
-            </button>
-            <button
-              onClick={handleLogout}
-              title="Sair do Sistema"
-              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm shadow-sm"
-            >
-              <LogOut className="w-4 h-4 text-rose-400" />
-              <span>Sair</span>
             </button>
           </div>
         </header>
 
-        {/* Competência & Filtro de Mês/Ano */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-          <button
-            onClick={handlePrevMonth}
-            className="flex items-center gap-1 text-slate-600 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition cursor-pointer font-medium text-sm"
-          >
-            <ChevronLeft className="w-5 h-5" />
-            <span>Mês Anterior</span>
-          </button>
-
-          <div className="flex items-center gap-3">
-            <select
-              value={currentMonth}
-              onChange={handleMonthChange}
-              className="border border-slate-300 rounded-lg text-sm p-2 bg-slate-50 font-bold text-indigo-900 capitalize cursor-pointer"
-            >
-              {Array.from({ length: 12 }, (_, i) => {
-                const d = new Date(2026, i, 1);
-                const name = d.toLocaleString('pt-BR', { month: 'long' });
-                return <option key={i} value={i}>{name}</option>;
-              })}
-            </select>
-
-            <select
-              value={currentYear}
-              onChange={handleYearChange}
-              className="border border-slate-300 rounded-lg text-sm p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
-            >
-              {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          </div>
-
-          <button
-            onClick={handleNextMonth}
-            className="flex items-center gap-1 text-slate-600 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition cursor-pointer font-medium text-sm"
-          >
-            <span>Próximo Mês</span>
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* DASHBOARD – TOTALIZADORES MENSAIS POR COMPETÊNCIA */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-indigo-600" />
-              Dashboard Executivo — {monthName}
-            </h3>
-            <span className="text-xs text-slate-400 font-medium">Competência vs. Movimentação Efetiva (Caixa)</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-indigo-900 text-white p-5 rounded-xl shadow-sm">
-              <span className="text-xs uppercase font-semibold text-indigo-200 tracking-wider">Total de Receitas (Competência)</span>
-              <h2 className="text-2xl font-bold mt-2">R$ {totalReceitasCompetencia.toFixed(2)}</h2>
-              <p className="text-[11px] text-indigo-300 mt-1">Soma de todas as receitas lançadas no mês</p>
-            </div>
-
-            <div className="bg-slate-900 text-white p-5 rounded-xl shadow-sm">
-              <span className="text-xs uppercase font-semibold text-slate-400 tracking-wider">Total de Despesas (Competência)</span>
-              <h2 className="text-2xl font-bold mt-2">R$ {totalDespesasCompetencia.toFixed(2)}</h2>
-              <p className="text-[11px] text-slate-400 mt-1">Soma de todas as despesas lançadas no mês</p>
-            </div>
-
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-xs uppercase font-semibold text-slate-500 tracking-wider">Resultado do Mês (Competência)</span>
-              <h2 className={`text-2xl font-bold mt-2 ${resultadoMesCompetencia >= 0 ? 'text-indigo-900' : 'text-rose-600'}`}>
-                R$ {resultadoMesCompetencia.toFixed(2)}
-              </h2>
-              <p className="text-[11px] text-slate-400 mt-1">Diferença entre receitas e despesas</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-xs font-semibold uppercase text-slate-500">Receitas Recebidas</span>
-              <h2 className="text-xl font-bold text-emerald-600 mt-1">R$ {receitasRecebidas.toFixed(2)}</h2>
-              <p className="text-[11px] text-slate-400 mt-1">Efetivamente recebidas no mês</p>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-xs font-semibold uppercase text-slate-500">Receitas Pendentes</span>
-              <h2 className="text-xl font-bold text-amber-600 mt-1">R$ {receitasPendentes.toFixed(2)}</h2>
-              <p className="text-[11px] text-slate-400 mt-1">Ainda não recebidas</p>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-xs font-semibold uppercase text-slate-500">Despesas Pagas</span>
-              <h2 className="text-xl font-bold text-rose-600 mt-1">R$ {despesasPagas.toFixed(2)}</h2>
-              <p className="text-[11px] text-slate-400 mt-1">Efetivamente pagas no mês</p>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-xs font-semibold uppercase text-slate-500">Despesas Pendentes</span>
-              <h2 className="text-xl font-bold text-amber-600 mt-1">R$ {despesasPendentes.toFixed(2)}</h2>
-              <p className="text-[11px] text-slate-400 mt-1">Ainda não pagas</p>
-            </div>
-          </div>
-        </section>
-
-        {/* PROJEÇÃO DE CAIXA */}
-        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <TrendUp className="w-5 h-5 text-indigo-600" />
-              Projeção de Fluxo de Caixa (Próximos 6 Meses)
-            </h3>
-            <span className="text-xs text-slate-400 font-medium">Previsão baseada em parcelamentos e recorrências</span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-            {cashFlowProjections.map((p, idx) => (
-              <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-center space-y-1">
-                <span className="text-xs font-bold text-indigo-900 uppercase">{p.name}</span>
-                <div className="text-[11px] text-emerald-600 font-semibold">+R$ {p.income.toFixed(0)}</div>
-                <div className="text-[11px] text-rose-600 font-semibold">-R$ {p.expense.toFixed(0)}</div>
-                <div className={`text-xs font-bold pt-1 border-t border-slate-200 ${p.balance >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
-                  R$ {p.balance.toFixed(0)}
+        <main className="p-4 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
+          
+          {/* MÓDULO 1: LANÇAMENTOS (Página Inicial padrão - Regra 1) */}
+          {currentModule === 'transactions' && (
+            <div className="space-y-6">
+              
+              {/* Cards Compactos com os Indicadores do Mês (Regra 1) */}
+              <section className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
+                  <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Total de Receitas</span>
+                  <div className="text-xl font-bold text-emerald-600">R$ {totalReceitasMes.toFixed(2)}</div>
+                  <p className="text-[11px] text-slate-400">Receitas do mês selecionado</p>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
 
-        {/* FATURA DE CARTÃO */}
-        {creditCards.length > 0 && activeCard && activeCardLimit && (
-          <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-2">
-                <CreditCard className="w-6 h-6 text-indigo-600" />
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">Fatura do Cartão — {monthName}</h3>
-                  <p className="text-xs text-slate-500">Situação: <strong className="text-indigo-700">{invoiceStatus}</strong> | Saldo anterior transportado: R$ {broughtForward.toFixed(2)}</p>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
+                  <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Total de Despesas</span>
+                  <div className="text-xl font-bold text-rose-600">R$ {totalDespesasMes.toFixed(2)}</div>
+                  <p className="text-[11px] text-slate-400">Despesas do mês selecionado</p>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-3">
-                <select
-                  value={selectedCardView}
-                  onChange={(e) => setSelectedCardView(e.target.value)}
-                  className="border border-slate-300 rounded-lg text-sm p-2 bg-slate-50 font-semibold text-indigo-900"
-                >
-                  {creditCards.map(card => (
-                    <option key={card.id} value={card.id}>{card.name} ({card.bank})</option>
-                  ))}
-                </select>
-
-                <button
-                  onClick={() => { setPaymentAmountInput(pendingInvoiceMonthTotal.toFixed(2)); setIsPaymentModalOpen(true); }}
-                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium text-xs transition cursor-pointer shadow-sm"
-                >
-                  <DollarSign className="w-4 h-4" />
-                  <span>Pagar Fatura (Flexível)</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs font-semibold uppercase text-slate-500">Valor Total da Fatura</span>
-                <h4 className="text-xl font-bold text-slate-900 mt-1">R$ {(invoiceMonthTotal + totalFeesThisMonth).toFixed(2)}</h4>
-                <p className="text-[11px] text-slate-400 mt-1">Inclui saldo anterior e encargos</p>
-              </div>
-
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs font-semibold uppercase text-slate-500">Total Pago</span>
-                <h4 className="text-xl font-bold text-emerald-600 mt-1">R$ {totalPaidThisMonth.toFixed(2)}</h4>
-                <p className="text-[11px] text-slate-400 mt-1">Encargos: R$ {totalFeesThisMonth.toFixed(2)}</p>
-              </div>
-
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs font-semibold uppercase text-slate-500">Saldo Pendente</span>
-                <h4 className="text-xl font-bold text-rose-600 mt-1">R$ {pendingInvoiceMonthTotal.toFixed(2)}</h4>
-                <p className="text-[11px] text-slate-400 mt-1">Vai para a próxima fatura</p>
-              </div>
-
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs font-semibold uppercase text-slate-500">Limite Utilizado</span>
-                <h4 className="text-xl font-bold text-rose-600 mt-1">R$ {activeCardLimit.used.toFixed(2)}</h4>
-                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-2">
-                  <div 
-                    className="bg-rose-500 h-2 rounded-full" 
-                    style={{ width: `${Math.min((activeCardLimit.used / activeCardLimit.total) * 100, 100)}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs font-semibold uppercase text-slate-500">Limite Disponível</span>
-                <h4 className="text-xl font-bold text-emerald-600 mt-1">R$ {activeCardLimit.available.toFixed(2)}</h4>
-                <p className="text-[11px] text-slate-400 mt-1">Calculado com saldo devedor</p>
-              </div>
-            </div>
-
-            {cardPaymentsThisMonth.length > 0 && (
-              <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 space-y-2">
-                <span className="text-xs font-bold text-indigo-900 uppercase">Histórico de Pagamentos Realizados Nesta Fatura:</span>
-                <div className="space-y-1">
-                  {cardPaymentsThisMonth.map(p => (
-                    <div key={p.id} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-indigo-100 text-xs">
-                      <div>
-                        <span className="font-bold text-slate-800">Pago R$ {p.amountPaid.toFixed(2)}</span> via <span className="text-indigo-600 font-semibold">{p.account}</span> em {p.paymentDate}
-                        {p.interestAndFees > 0 && <span className="text-rose-600 ml-2">(Encargos/Juros: R$ {p.interestAndFees.toFixed(2)})</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* METAS */}
-        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Target className="w-5 h-5 text-amber-600" />
-              Metas de Gastos por Categoria — {monthName}
-            </h3>
-            <button
-              onClick={() => { setTempBudgets(budgets); setIsBudgetModalOpen(true); }}
-              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
-            >
-              Configurar Metas
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {categories.map(cat => {
-              const spent = monthTransactions
-                .filter(t => t.category === cat && t.type === 'expense')
-                .reduce((acc, t) => acc + t.amount, 0);
-              const budgetLimit = budgets[cat] || 0;
-              if (budgetLimit === 0 && spent === 0) return null;
-
-              const pct = budgetLimit > 0 ? (spent / budgetLimit) * 100 : 0;
-              const isOver = budgetLimit > 0 && spent > budgetLimit;
-
-              return (
-                <div key={cat} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex justify-between items-center text-xs font-bold text-slate-700">
-                    <span>{cat}</span>
-                    <span className={isOver ? 'text-rose-600 font-extrabold' : 'text-slate-500'}>
-                      R$ {spent.toFixed(2)} / {budgetLimit > 0 ? `R$ ${budgetLimit.toFixed(2)}` : 'Sem meta'}
-                    </span>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
+                  <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Saldo do Período</span>
+                  <div className={`text-xl font-bold ${saldoPeriodoMes >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                    R$ {saldoPeriodoMes.toFixed(2)}
                   </div>
-                  {budgetLimit > 0 && (
-                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-2 rounded-full transition-all duration-500 ${isOver ? 'bg-rose-600' : pct > 80 ? 'bg-amber-500' : 'bg-emerald-600'}`}
-                        style={{ width: `${Math.min(pct, 100)}%` }}
-                      ></div>
-                    </div>
+                  <p className="text-[11px] text-slate-400">Receitas menos despesas</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
+                  <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Total de Lançamentos</span>
+                  <div className="text-xl font-bold text-indigo-900">{totalLancamentosMes}</div>
+                  <p className="text-[11px] text-slate-400">Registros no período</p>
+                </div>
+              </section>
+
+              {/* Filtros e Pesquisa (Regra 1) */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <button onClick={handlePrevMonth} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer">
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <select
+                    value={currentMonth}
+                    onChange={handleMonthChange}
+                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 capitalize cursor-pointer"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => {
+                      const d = new Date(2026, i, 1);
+                      const name = d.toLocaleString('pt-BR', { month: 'long' });
+                      return <option key={i} value={i}>{name}</option>;
+                    })}
+                  </select>
+                  <select
+                    value={currentYear}
+                    onChange={handleYearChange}
+                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
+                  >
+                    {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <button onClick={handleNextMonth} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer">
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+                  <input
+                    type="text"
+                    placeholder="Pesquisar descrição ou categoria..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 w-full sm:w-48"
+                  />
+
+                  <select
+                    value={selectedTypeFilter}
+                    onChange={(e) => setSelectedTypeFilter(e.target.value as any)}
+                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-medium"
+                  >
+                    <option value="all">Todos os Tipos</option>
+                    <option value="income">Apenas Receitas</option>
+                    <option value="expense">Apenas Despesas</option>
+                  </select>
+
+                  <select
+                    value={selectedCategoryFilter}
+                    onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-medium"
+                  >
+                    <option value="all">Todas as Categorias</option>
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={exportToCSV}
+                    className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>CSV</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tabela de Lançamentos (Regra 1) */}
+              <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900">Extrato de Lançamentos ({monthName})</h3>
+                  {selectedTransactionIds.length > 0 && (
+                    <button
+                      onClick={() => setIsBatchDeleteModalOpen(true)}
+                      className="flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition shadow-xs cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Excluir Selecionados ({selectedTransactionIds.length})</span>
+                    </button>
                   )}
                 </div>
-              );
-            })}
-          </div>
-        </section>
 
-        {/* EXTRATO */}
-        <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
-          <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Filter className="w-5 h-5 text-slate-500" />
-              <h3 className="text-lg font-bold text-slate-900">Extrato ({monthName})</h3>
-              {selectedTransactionIds.length > 0 && (
-                <button
-                  onClick={() => setIsBatchDeleteModalOpen(true)}
-                  className="flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition shadow-sm cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Excluir Selecionados ({selectedTransactionIds.length})</span>
-                </button>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={exportToCSV}
-                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-sm"
-              >
-                <Download className="w-4 h-4" />
-                <span>Exportar CSV (Excel)</span>
-              </button>
-
-              <select
-                value={selectedTypeFilter}
-                onChange={(e) => setSelectedTypeFilter(e.target.value as any)}
-                className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-medium"
-              >
-                <option value="all">Todos os Tipos</option>
-                <option value="income">Apenas Receitas</option>
-                <option value="expense">Apenas Despesas</option>
-              </select>
-
-              <select
-                value={selectedCategoryFilter}
-                onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-medium"
-              >
-                <option value="all">Todas as Categorias</option>
-                {categories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200">
-                  <th className="p-4 w-10 text-center">
-                    <button onClick={toggleSelectAll} className="cursor-pointer text-slate-500">
-                      {filteredTransactions.length > 0 && selectedTransactionIds.length === filteredTransactions.length ? (
-                        <CheckSquare className="w-4 h-4 text-emerald-600" />
-                      ) : (
-                        <Square className="w-4 h-4" />
-                      )}
-                    </button>
-                  </th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4">Descrição / Detalhes</th>
-                  <th className="p-4">Origem / Cartão</th>
-                  <th className="p-4">Categoria</th>
-                  <th className="p-4">Vencimento</th>
-                  <th className="p-4">Valor</th>
-                  <th className="p-4 text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
-                {filteredTransactions.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400">
-                      Nenhum lançamento encontrado para os filtros selecionados neste mês.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredTransactions.map((t) => {
-                    const isSelected = selectedTransactionIds.includes(t.id);
-                    return (
-                      <tr key={t.id} className={`hover:bg-slate-50/80 transition ${isSelected ? 'bg-indigo-50/40' : ''}`}>
-                        <td className="p-4 text-center">
-                          <button onClick={() => toggleSelectOne(t.id)} className="cursor-pointer text-slate-500">
-                            {isSelected ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4" />}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase font-semibold border-b border-slate-200">
+                        <th className="p-3.5 w-10 text-center">
+                          <button onClick={toggleSelectAll} className="cursor-pointer text-slate-500">
+                            {filteredTransactions.length > 0 && selectedTransactionIds.length === filteredTransactions.length ? (
+                              <CheckSquare className="w-4 h-4 text-emerald-600" />
+                            ) : (
+                              <Square className="w-4 h-4" />
+                            )}
                           </button>
-                        </td>
-                        <td className="p-4">
-                          <button
-                            onClick={() => toggleStatus(t.id)}
-                            className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full cursor-pointer transition ${
-                              t.status === 'paid'
-                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                                : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                            }`}
-                          >
-                            {t.status === 'paid' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-                            <span>{t.status === 'paid' ? 'Pago' : 'Pendente'}</span>
-                          </button>
-                        </td>
-                        <td className="p-4">
-                          <div className="font-medium text-slate-800 flex items-center gap-2">
-                            {t.description}
-                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${t.type === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                              {t.type === 'income' ? 'Receita' : 'Despesa'}
-                            </span>
-                          </div>
-                          {t.installmentInfo && (
-                            <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-semibold mt-0.5">
-                              <Layers className="w-3 h-3" />
-                              {t.installmentInfo}
-                            </span>
-                          )}
-                          {t.recurringInfo && (
-                            <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-semibold mt-0.5">
-                              <Repeat className="w-3 h-3" />
-                              {t.recurringInfo}
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-4 text-slate-600 text-xs font-medium flex items-center gap-1.5">
-                          {t.creditCardId ? (
-                            <CreditCard className="w-3.5 h-3.5 text-indigo-500" />
-                          ) : (
-                            <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                          )}
-                          {t.account}
-                        </td>
-                        <td className="p-4">
-                          <span className="bg-slate-100 text-slate-600 text-xs px-2.5 py-1 rounded-md font-medium">
-                            {t.category}
-                          </span>
-                        </td>
-                        <td className="p-4 text-slate-500 font-medium">{t.dueDate || t.date}</td>
-                        <td className={`p-4 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {t.type === 'income' ? '+' : '-'} R$ {t.amount.toFixed(2)}
-                        </td>
-                        <td className="p-4 text-center space-x-2">
-                          <button
-                            onClick={() => openEditModal(t)}
-                            className="text-indigo-500 hover:text-indigo-700 transition p-1.5 rounded-lg hover:bg-indigo-50 cursor-pointer inline-flex items-center gap-1 text-xs font-medium"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                            <span>Editar</span>
-                          </button>
-                          <button
-                            onClick={() => confirmDelete(t)}
-                            className="text-slate-400 hover:text-rose-600 transition p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer inline-flex items-center gap-1 text-xs font-medium"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            <span>Excluir</span>
-                          </button>
-                        </td>
+                        </th>
+                        <th className="p-3.5">Situação</th>
+                        <th className="p-3.5">Descrição</th>
+                        <th className="p-3.5">Categoria</th>
+                        <th className="p-3.5">Tipo</th>
+                        <th className="p-3.5">Vencimento</th>
+                        <th className="p-3.5">Valor</th>
+                        <th className="p-3.5 text-center">Ações</th>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {filteredTransactions.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="p-8 text-center text-slate-400">
+                            Nenhum lançamento encontrado para os filtros selecionados.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredTransactions.map((t) => {
+                          const isSelected = selectedTransactionIds.includes(t.id);
+                          return (
+                            <tr key={t.id} className={`hover:bg-slate-50/80 transition ${isSelected ? 'bg-indigo-50/40' : ''}`}>
+                              <td className="p-3.5 text-center">
+                                <button onClick={() => toggleSelectOne(t.id)} className="cursor-pointer text-slate-500">
+                                  {isSelected ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4" />}
+                                </button>
+                              </td>
+                              <td className="p-3.5">
+                                <button
+                                  onClick={() => toggleStatus(t.id)}
+                                  className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full cursor-pointer transition ${
+                                    t.status === 'paid'
+                                      ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                      : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                  }`}
+                                >
+                                  {t.status === 'paid' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                                  <span>{t.status === 'paid' ? (t.type === 'income' ? 'Recebido' : 'Pago') : 'Pendente'}</span>
+                                </button>
+                              </td>
+                              <td className="p-3.5 font-medium text-slate-800">
+                                {t.description}
+                                {t.installmentInfo && <div className="text-[10px] text-indigo-600 font-semibold">{t.installmentInfo}</div>}
+                              </td>
+                              <td className="p-3.5 text-slate-600">{t.category}</td>
+                              <td className="p-3.5">
+                                <span className={`px-2 py-0.5 rounded font-bold uppercase text-[10px] ${t.type === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                                  {t.type === 'income' ? 'Receita' : 'Despesa'}
+                                </span>
+                              </td>
+                              <td className="p-3.5 text-slate-500">{t.dueDate || t.date}</td>
+                              <td className={`p-3.5 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {t.type === 'income' ? '+' : '-'} R$ {t.amount.toFixed(2)}
+                              </td>
+                              <td className="p-3.5 text-center space-x-2">
+                                <button
+                                  onClick={() => openEditModal(t)}
+                                  className="text-indigo-500 hover:text-indigo-700 transition p-1 rounded-md hover:bg-indigo-50 cursor-pointer inline-flex items-center gap-1 font-medium"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                  <span>Editar</span>
+                                </button>
+                                <button
+                                  onClick={() => confirmDelete(t)}
+                                  className="text-slate-400 hover:text-rose-600 transition p-1 rounded-md hover:bg-rose-50 cursor-pointer inline-flex items-center gap-1 font-medium"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Excluir</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
+            </div>
+          )}
+
+          {/* MÓDULO 2: CONTAS BANCÁRIAS */}
+          {currentModule === 'accounts' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-base font-bold text-slate-900">Contas Bancárias e Carteiras Cadastradas</h3>
+              <p className="text-xs text-slate-500">Acompanhe e gerencie as contas utilizadas para movimentação financeira e liquidação de pagamentos.</p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                {accounts.map(acc => (
+                  <div key={acc} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800">{acc}</span>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Conta ativa no sistema</p>
+                    </div>
+                    <Building2 className="w-5 h-5 text-indigo-600" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* MÓDULO 3: CARTÕES DE CRÉDITO */}
+          {currentModule === 'cards' && creditCards.length > 0 && activeCard && activeCardLimit && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Gerenciamento de Cartões de Crédito — {monthName}</h3>
+                  <p className="text-xs text-slate-500">Situação da fatura: <strong className="text-indigo-700">{invoiceStatus}</strong> | Saldo anterior transportado: R$ {broughtForward.toFixed(2)}</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <select
+                    value={selectedCardView}
+                    onChange={(e) => setSelectedCardView(e.target.value)}
+                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-semibold text-indigo-900"
+                  >
+                    {creditCards.map(card => (
+                      <option key={card.id} value={card.id}>{card.name} ({card.bank})</option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => { setPaymentAmountInput(pendingInvoiceMonthTotal.toFixed(2)); setIsPaymentModalOpen(true); }}
+                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg font-medium text-xs transition cursor-pointer shadow-sm"
+                  >
+                    <DollarSign className="w-4 h-4" />
+                    <span>Pagar Fatura</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-semibold uppercase text-slate-500">Total da Fatura</span>
+                  <h4 className="text-xl font-bold text-slate-900 mt-1">R$ {(invoiceMonthTotal + totalFeesThisMonth).toFixed(2)}</h4>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-semibold uppercase text-slate-500">Total Pago</span>
+                  <h4 className="text-xl font-bold text-emerald-600 mt-1">R$ {totalPaidThisMonth.toFixed(2)}</h4>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-semibold uppercase text-slate-500">Saldo Pendente</span>
+                  <h4 className="text-xl font-bold text-rose-600 mt-1">R$ {pendingInvoiceMonthTotal.toFixed(2)}</h4>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-semibold uppercase text-slate-500">Limite Disponível</span>
+                  <h4 className="text-xl font-bold text-emerald-600 mt-1">R$ {activeCardLimit.available.toFixed(2)}</h4>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MÓDULO 4: CONTAS A PAGAR */}
+          {currentModule === 'payables' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-base font-bold text-slate-900">Contas a Pagar (Obrigações Financeiras Pendentes)</h3>
+              <div className="space-y-2">
+                {activeTransactions.filter(t => t.type === 'expense' && t.status === 'pending').length === 0 ? (
+                  <p className="text-xs text-slate-400 py-6 text-center">Nenhuma conta a pagar pendente no momento.</p>
+                ) : (
+                  activeTransactions.filter(t => t.type === 'expense' && t.status === 'pending').map(t => (
+                    <div key={t.id} className="flex justify-between items-center bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
+                      <div>
+                        <div className="font-bold text-slate-800">{t.description}</div>
+                        <div className="text-slate-400 text-[11px]">Vencimento: {t.dueDate || t.date} | Categoria: {t.category}</div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-rose-600">R$ {t.amount.toFixed(2)}</span>
+                        <button
+                          onClick={() => toggleStatus(t.id)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                        >
+                          Marcar como Pago
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* MÓDULO 5: CONTAS A RECEBER */}
+          {currentModule === 'receivables' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-base font-bold text-slate-900">Contas a Receber (Valores Pendentes)</h3>
+              <div className="space-y-2">
+                {activeTransactions.filter(t => t.type === 'income' && t.status === 'pending').length === 0 ? (
+                  <p className="text-xs text-slate-400 py-6 text-center">Nenhuma conta a receber pendente no momento.</p>
+                ) : (
+                  activeTransactions.filter(t => t.type === 'income' && t.status === 'pending').map(t => (
+                    <div key={t.id} className="flex justify-between items-center bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
+                      <div>
+                        <div className="font-bold text-slate-800">{t.description}</div>
+                        <div className="text-slate-400 text-[11px]">Previsão: {t.dueDate || t.date} | Categoria: {t.category}</div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-emerald-600">R$ {t.amount.toFixed(2)}</span>
+                        <button
+                          onClick={() => toggleStatus(t.id)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                        >
+                          Marcar como Recebido
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* MÓDULO 6: FLUXO DE CAIXA */}
+          {currentModule === 'cashflow' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-base font-bold text-slate-900">Projeção de Fluxo de Caixa (Próximos 6 Meses)</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2">
+                {cashFlowProjections.map((p, idx) => (
+                  <div key={idx} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-indigo-900 uppercase">{p.name}</span>
+                      <span className={`text-xs font-bold ${p.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>R$ {p.balance.toFixed(2)}</span>
+                    </div>
+                    <div className="text-xs text-slate-500 flex justify-between">
+                      <span>Entradas: <strong className="text-emerald-600">+R$ {p.income.toFixed(2)}</strong></span>
+                      <span>Saídas: <strong className="text-rose-600">-R$ {p.expense.toFixed(2)}</strong></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* MÓDULO 7: ORÇAMENTO */}
+          {currentModule === 'budget' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-base font-bold text-slate-900">Planejamento e Metas de Gastos por Categoria — {monthName}</h3>
+                <button
+                  onClick={() => { setTempBudgets(budgets); setIsBudgetModalOpen(true); }}
+                  className="bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer"
+                >
+                  Configurar Metas
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2">
+                {categories.map(cat => {
+                  const spent = monthTransactions
+                    .filter(t => t.category === cat && t.type === 'expense')
+                    .reduce((acc, t) => acc + t.amount, 0);
+                  const budgetLimit = budgets[cat] || 0;
+                  const pct = budgetLimit > 0 ? (spent / budgetLimit) * 100 : 0;
+                  const isOver = budgetLimit > 0 && spent > budgetLimit;
+
+                  return (
+                    <div key={cat} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                        <span>{cat}</span>
+                        <span className={isOver ? 'text-rose-600 font-extrabold' : 'text-slate-500'}>
+                          R$ {spent.toFixed(2)} / {budgetLimit > 0 ? `R$ ${budgetLimit.toFixed(2)}` : 'Sem meta'}
+                        </span>
+                      </div>
+                      {budgetLimit > 0 && (
+                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-2 rounded-full transition-all duration-500 ${isOver ? 'bg-rose-600' : pct > 80 ? 'bg-amber-500' : 'bg-emerald-600'}`}
+                            style={{ width: `${Math.min(pct, 100)}%` }}
+                          ></div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* MÓDULO 8: RELATÓRIOS */}
+          {currentModule === 'reports' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-base font-bold text-slate-900">Relatórios e Demonstrativos Financeiros</h3>
+              <p className="text-xs text-slate-500">Exporte demonstrativos completos e analise o desempenho por competência no período.</p>
+              <div className="pt-2">
+                <button
+                  onClick={exportToCSV}
+                  className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg text-xs font-semibold transition cursor-pointer inline-flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Baixar Extrato Completo (CSV / Excel)</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* MÓDULO 9: CONFIGURAÇÕES */}
+          {currentModule === 'settings' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-base font-bold text-slate-900">Configurações do Sistema e Usuários</h3>
+              <div className="flex flex-wrap gap-3 pt-2">
+                {currentUser.role === 'admin' && (
+                  <button
+                    onClick={() => setIsUserManagementModalOpen(true)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                  >
+                    Gerenciar Usuários e Permissões
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsManageModalOpen(true)}
+                  className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                >
+                  Gerenciar Cartões de Crédito e Contas
+                </button>
+              </div>
+            </div>
+          )}
+
+        </main>
       </div>
 
       {/* MODAL DE GERENCIAMENTO DE USUÁRIOS (ADMIN) */}
