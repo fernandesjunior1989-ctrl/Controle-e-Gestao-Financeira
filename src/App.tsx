@@ -1356,7 +1356,7 @@ export default function App() {
                         onChange={handleYearChange}
                         className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
                       >
-                        {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                        {[2024, 2025, 2026, 2027, 2028, 2029, 2030,2031,2032,2033,2034,2035,2036,2037,2038,2039,2040].map(y => (
                           <option key={y} value={y}>{y}</option>
                         ))}
                       </select>
