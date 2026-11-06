@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   PlusCircle, Trash2, X, Save, 
-  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, KeyRound, Menu, ArrowDownRight, Tag, PanelLeftClose, PanelLeftOpen, Calendar, Sparkles
+  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, KeyRound, Menu, ArrowDownRight, Tag, PanelLeftClose, PanelLeftOpen, Calendar, Sparkles, Filter
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -94,11 +94,15 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // ESTADOS DO FILTRO DE PERÍODO (DIA, MÊS, ANO)
-  const [periodFilterMode, setPeriodFilterMode] = useState<'month' | 'day' | 'year'>('month');
+  const [periodFilterMode, setPeriodFilterMode] = useState<'month' | 'day' | 'year' | 'custom'>('month');
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   });
+
+  // ESTADOS PARA FILTRO CUSTOMIZADO POR DATA NOS LANÇAMENTOS
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
 
   // ANOS DINÂMICOS AUTOMÁTICOS
   const currentSystemYear = new Date().getFullYear();
@@ -192,7 +196,7 @@ export default function App() {
   const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
 
-  // ESTADOS DA LIXEIRA (SELEÇÃO E EXCLUSÃO DEFINITIVA EM LOTE)
+  // ESTADOS DA LIXEIRA
   const [selectedTrashIds, setSelectedTrashIds] = useState<string[]>([]);
   const [isPermanentDeleteModalOpen, setIsPermanentDeleteModalOpen] = useState(false);
   const [permanentIdToDelete, setPermanentIdToDelete] = useState<string | null>(null);
@@ -542,7 +546,14 @@ export default function App() {
   const expandedActiveTransactions = getExpandedTransactions();
 
   const periodTransactions = expandedActiveTransactions.filter(t => {
-    const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
+    const itemDate = t.dueDate || t.date;
+    if (periodFilterMode === 'custom') {
+      if (customStartDate && itemDate < customStartDate) return false;
+      if (customEndDate && itemDate > customEndDate) return false;
+      return true;
+    }
+
+    const targetDate = new Date(itemDate + 'T00:00:00');
     if (periodFilterMode === 'day') {
       return (
         targetDate.getFullYear() === currentYear &&
@@ -1157,7 +1168,6 @@ export default function App() {
     }));
   };
 
-  // RESTAURAR SELECIONADOS NA LIXEIRA
   const restoreBatchFromTrash = () => {
     setTransactions(transactions.map(t => {
       if (selectedTrashIds.includes(t.id)) {
@@ -1169,7 +1179,6 @@ export default function App() {
     setSelectedTrashIds([]);
   };
 
-  // SELEÇÃO NA LIXEIRA
   const toggleSelectAllTrash = () => {
     const allIds = trashedTransactions.map(t => t.id);
     const allSelected = allIds.every(id => selectedTrashIds.includes(id));
@@ -1188,7 +1197,6 @@ export default function App() {
     }
   };
 
-  // EXCLUSÃO DEFINITIVA INDIVIDUAL
   const confirmPermanentDelete = (id: string) => {
     setPermanentIdToDelete(id);
     setIsPermanentDeleteModalOpen(true);
@@ -1201,7 +1209,6 @@ export default function App() {
     setPermanentIdToDelete(null);
   };
 
-  // EXCLUSÃO DEFINITIVA EM LOTE NA LIXEIRA
   const executeBatchPermanentDelete = () => {
     setTransactions(transactions.filter(t => !selectedTrashIds.includes(t.id)));
     setSelectedTrashIds([]);
@@ -1384,7 +1391,7 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-emerald-600" />
                     <span className="text-xs font-bold text-slate-700 uppercase">Filtrar Período Por:</span>
-                    <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 text-xs">
+                    <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 text-xs flex-wrap">
                       <button
                         onClick={() => setPeriodFilterMode('day')}
                         className={`px-3 py-1 rounded-md font-semibold transition cursor-pointer ${periodFilterMode === 'day' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
@@ -1403,36 +1410,56 @@ export default function App() {
                       >
                         Ano
                       </button>
+                      <button
+                        onClick={() => setPeriodFilterMode('custom')}
+                        className={`px-3 py-1 rounded-md font-semibold transition cursor-pointer ${periodFilterMode === 'custom' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                      >
+                        Personalizado (Data)
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 justify-center">
-                    <button onClick={handlePrevPeriod} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer" title="Período anterior">
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
+                  {periodFilterMode !== 'custom' && (
+                    <div className="flex items-center gap-2 justify-center">
+                      <button onClick={handlePrevPeriod} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer" title="Período anterior">
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
 
-                    {periodFilterMode === 'day' && (
-                      <input
-                        type="date"
-                        value={dayStr}
-                        onChange={handleDayChange}
-                        className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
-                      />
-                    )}
+                      {periodFilterMode === 'day' && (
+                        <input
+                          type="date"
+                          value={dayStr}
+                          onChange={handleDayChange}
+                          className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
+                        />
+                      )}
 
-                    {periodFilterMode === 'month' && (
-                      <>
-                        <select
-                          value={currentMonth}
-                          onChange={handleMonthChange}
-                          className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 capitalize cursor-pointer"
-                        >
-                          {Array.from({ length: 12 }, (_, i) => {
-                            const d = new Date(2026, i, 1);
-                            const name = d.toLocaleString('pt-BR', { month: 'long' });
-                            return <option key={i} value={i}>{name}</option>;
-                          })}
-                        </select>
+                      {periodFilterMode === 'month' && (
+                        <>
+                          <select
+                            value={currentMonth}
+                            onChange={handleMonthChange}
+                            className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 capitalize cursor-pointer"
+                          >
+                            {Array.from({ length: 12 }, (_, i) => {
+                              const d = new Date(2026, i, 1);
+                              const name = d.toLocaleString('pt-BR', { month: 'long' });
+                              return <option key={i} value={i}>{name}</option>;
+                            })}
+                          </select>
+                          <select
+                            value={currentYear}
+                            onChange={handleYearChange}
+                            className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
+                          >
+                            {availableYears.map(y => (
+                              <option key={y} value={y}>{y}</option>
+                            ))}
+                          </select>
+                        </>
+                      )}
+
+                      {periodFilterMode === 'year' && (
                         <select
                           value={currentYear}
                           onChange={handleYearChange}
@@ -1442,26 +1469,50 @@ export default function App() {
                             <option key={y} value={y}>{y}</option>
                           ))}
                         </select>
-                      </>
-                    )}
+                      )}
 
-                    {periodFilterMode === 'year' && (
-                      <select
-                        value={currentYear}
-                        onChange={handleYearChange}
-                        className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
-                      >
-                        {availableYears.map(y => (
-                          <option key={y} value={y}>{y}</option>
-                        ))}
-                      </select>
-                    )}
-
-                    <button onClick={handleNextPeriod} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer" title="Próximo período">
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
+                      <button onClick={handleNextPeriod} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer" title="Próximo período">
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {/* SELETOR DE DATAS PERSONALIZADAS SE O MODO FOR 'custom' */}
+                {periodFilterMode === 'custom' && (
+                  <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                    <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                      <Filter className="w-4 h-4 text-emerald-600" />
+                      <span>Intervalo de Datas:</span>
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-slate-500">De:</span>
+                      <input
+                        type="date"
+                        value={customStartDate}
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                        className="border border-slate-300 rounded-lg p-1.5 bg-white text-xs font-semibold"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-slate-500">Até:</span>
+                      <input
+                        type="date"
+                        value={customEndDate}
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                        className="border border-slate-300 rounded-lg p-1.5 bg-white text-xs font-semibold"
+                      />
+                    </div>
+                    {(customStartDate || customEndDate) && (
+                      <button
+                        onClick={() => { setCustomStartDate(''); setCustomEndDate(''); }}
+                        className="text-emerald-600 hover:text-emerald-800 font-bold underline px-1"
+                      >
+                        Limpar Datas
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                   <input
@@ -1521,7 +1572,7 @@ export default function App() {
                 <div className="p-4 bg-emerald-50/70 border-b border-emerald-100 flex items-center justify-between">
                   <h3 className="text-sm font-bold text-emerald-900 flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-                    ENTRADAS (RECEITAS) — {periodFilterMode === 'day' ? dayFormattedName : periodFilterMode === 'month' ? monthName : `Ano de ${currentYear}`}
+                    ENTRADAS (RECEITAS) — {periodFilterMode === 'day' ? dayFormattedName : periodFilterMode === 'month' ? monthName : periodFilterMode === 'year' ? `Ano de ${currentYear}` : 'Período Personalizado'}
                   </h3>
                   <span className="text-xs font-bold text-emerald-700">Total: {formatCurrency(totalEntradasMes)}</span>
                 </div>
@@ -1616,7 +1667,7 @@ export default function App() {
                 <div className="p-4 bg-rose-50/70 border-b border-rose-100 flex items-center justify-between">
                   <h3 className="text-sm font-bold text-rose-900 flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
-                    SAÍDAS (DESPESAS) — {periodFilterMode === 'day' ? dayFormattedName : periodFilterMode === 'month' ? monthName : `Ano de ${currentYear}`}
+                    SAÍDAS (DESPESAS) — {periodFilterMode === 'day' ? dayFormattedName : periodFilterMode === 'month' ? monthName : periodFilterMode === 'year' ? `Ano de ${currentYear}` : 'Período Personalizado'}
                   </h3>
                   <span className="text-xs font-bold text-rose-700">Total: {formatCurrency(totalSaidasMes)}</span>
                 </div>
@@ -2167,42 +2218,7 @@ export default function App() {
         </div>
       )}
 
-      {/* DEMAIS MODAIS */}
-      {isNatureChangeConfirmOpen && editingTransaction && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200 text-center">
-            <div className="mx-auto w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            
-            <div className="space-y-2">
-              <h3 className="text-lg font-bold text-slate-900">Confirmação de Alteração de Natureza</h3>
-              <p className="text-sm text-slate-500">
-                Você está alterando o tipo deste lançamento de <strong className="text-slate-800">{editingTransaction.type === 'income' ? 'Receita' : 'Despesa'}</strong> para <strong className="text-indigo-700">{editType === 'income' ? 'Receita' : 'Despesa'}</strong>.
-              </p>
-            </div>
-
-            <div className="flex justify-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsNatureChangeConfirmOpen(false)}
-                className="flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer border border-slate-200"
-              >
-                Voltar
-              </button>
-              <button
-                type="button"
-                onClick={executeFinalEdit}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition shadow-sm cursor-pointer"
-              >
-                <span>Confirmar e Salvar</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DA LIXEIRA COM RECUPERAÇÃO E EXCLUSÃO EM LOTE */}
+      {/* MODAL DA LIXEIRA */}
       {isTrashModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
