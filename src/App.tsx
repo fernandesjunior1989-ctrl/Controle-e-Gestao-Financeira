@@ -56,7 +56,6 @@ interface SystemUser {
 }
 
 export default function App() {
-  // Controle de Sessão e Autenticação
   const [users, setUsers] = useState<SystemUser[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_users');
     if (saved) {
@@ -82,7 +81,6 @@ export default function App() {
     return null;
   });
 
-  // Estados da Tela de Login
   const [loginInput, setLoginInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -91,11 +89,9 @@ export default function App() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState(false);
 
-  // Módulo Ativo de Navegação (Regra 2 e 3)
   const [currentModule, setCurrentModule] = useState<'transactions' | 'accounts' | 'cards' | 'payables' | 'receivables' | 'cashflow' | 'budget' | 'reports' | 'settings'>('transactions');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Estados de Gerenciamento de Usuários
   const [isUserManagementModalOpen, setIsUserManagementModalOpen] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [newName, setNewName] = useState('');
@@ -171,7 +167,6 @@ export default function App() {
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
-  // Estados de edição por competência
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editScope, setEditScope] = useState<'single' | 'forward'>('single');
@@ -182,13 +177,11 @@ export default function App() {
   const [editType, setEditType] = useState<'income' | 'expense'>('expense');
   const [isNatureChangeConfirmOpen, setIsNatureChangeConfirmOpen] = useState(false);
 
-  // Pagamento de Fatura Flexível
   const [paymentAmountInput, setPaymentAmountInput] = useState('');
   const [paymentFeesInput, setPaymentFeesInput] = useState('0');
   const [paymentAccount, setPaymentAccount] = useState('Banco do Brasil');
   const [paymentDateInput, setPaymentDateInput] = useState(new Date().toISOString().split('T')[0]);
 
-  // Exclusão
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
   const [deleteOption, setDeleteOption] = useState<'single' | 'forward' | 'all'>('single');
@@ -196,7 +189,6 @@ export default function App() {
   const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
 
-  // Novo Lançamento & Modalidades de Parcelamento
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Outros');
   const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
@@ -221,7 +213,6 @@ export default function App() {
   const [newCardDueDay, setNewCardDueDay] = useState('17');
   const [newCardRule, setNewCardRule] = useState<'current' | 'next'>('next');
 
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCardView, setSelectedCardView] = useState<string>(creditCards[0]?.id || '');
@@ -277,7 +268,7 @@ export default function App() {
     }
 
     setCurrentUser(foundUser);
-    setCurrentModule('transactions'); // Redireciona para lançamentos (Regra 1)
+    setCurrentModule('transactions');
   };
 
   const handleLogout = () => {
@@ -490,17 +481,16 @@ export default function App() {
     return targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth;
   });
 
-  // Indicadores da Página Principal (Regra 1)
-  const totalReceitasMes = monthTransactions
+  // 3 Indicadores de Resumo Financeiro (Regra 3)
+  const totalEntradasMes = monthTransactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  const totalDespesasMes = monthTransactions
+  const totalSaidasMes = monthTransactions
     .filter(t => t.type === 'expense')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  const saldoPeriodoMes = totalReceitasMes - totalDespesasMes;
-  const totalLancamentosMes = monthTransactions.length;
+  const saldoMes = totalEntradasMes - totalSaidasMes;
 
   const cashFlowProjections = Array.from({ length: 6 }, (_, index) => {
     const projDate = new Date(currentYear, currentMonth + index, 1);
@@ -617,7 +607,7 @@ export default function App() {
 
   const exportToCSV = () => {
     const headers = ["Status", "Descricao", "Conta/Cartao", "Categoria", "Vencimento", "Tipo", "Valor"];
-    const rows = filteredTransactions.map(t => [
+    const rows = monthTransactions.map(t => [
       t.status === 'paid' ? 'Pago' : 'Pendente',
       `"${t.description}"`,
       `"${t.account}"`,
@@ -940,11 +930,16 @@ export default function App() {
     setTransactionToDelete(null);
   };
 
-  const toggleSelectAll = () => {
-    if (selectedTransactionIds.length === filteredTransactions.length) {
-      setSelectedTransactionIds([]);
+  const toggleSelectAll = (type: 'income' | 'expense') => {
+    const list = type === 'income' ? filteredIncomes : filteredExpenses;
+    const listIds = list.map(t => t.id);
+    const allSelected = listIds.every(id => selectedTransactionIds.includes(id));
+
+    if (allSelected) {
+      setSelectedTransactionIds(selectedTransactionIds.filter(id => !listIds.includes(id)));
     } else {
-      setSelectedTransactionIds(filteredTransactions.map(t => t.id));
+      const combined = Array.from(new Set([...selectedTransactionIds, ...listIds]));
+      setSelectedTransactionIds(combined);
     }
   };
 
@@ -978,15 +973,17 @@ export default function App() {
     }));
   };
 
-  // Filtros avançados para a tabela
-  const filteredTransactions = monthTransactions.filter(t => {
-    const matchesType = selectedTypeFilter === 'all' || t.type === selectedTypeFilter;
+  // Filtragem separada para Entradas e Saídas (Regra 4)
+  const baseFiltered = monthTransactions.filter(t => {
     const matchesCategory = selectedCategoryFilter === 'all' || t.category === selectedCategoryFilter;
     const matchesSearch = searchQuery === '' || 
       t.description.toLowerCase().includes(searchQuery.toLowerCase()) || 
       t.category.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesType && matchesCategory && matchesSearch;
+    return matchesCategory && matchesSearch;
   });
+
+  const filteredIncomes = baseFiltered.filter(t => t.type === 'income');
+  const filteredExpenses = baseFiltered.filter(t => t.type === 'expense');
 
   const batchTotalAmount = transactions
     .filter(t => selectedTransactionIds.includes(t.id))
@@ -995,7 +992,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col md:flex-row">
       
-      {/* MENU LATERAL DE NAVEGAÇÃO MODERNO (Regra 2 e 3) */}
+      {/* MENU LATERAL DE NAVEGAÇÃO */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 transform transition-transform duration-200 ease-in-out md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col justify-between border-r border-slate-800 shadow-xl`}>
         <div className="p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -1103,7 +1100,6 @@ export default function App() {
       {/* CONTEÚDO PRINCIPAL */}
       <div className="flex-1 flex flex-col min-w-0 md:pl-64">
         
-        {/* Barra superior mobile / ações */}
         <header className="bg-white border-b border-slate-200 px-4 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-xs">
           <div className="flex items-center gap-3">
             <button
@@ -1145,40 +1141,34 @@ export default function App() {
 
         <main className="p-4 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
           
-          {/* MÓDULO 1: LANÇAMENTOS (Página Inicial padrão - Regra 1) */}
+          {/* MÓDULO 1: LANÇAMENTOS (Com Seções Separadas) */}
           {currentModule === 'transactions' && (
             <div className="space-y-6">
               
-              {/* Cards Compactos com os Indicadores do Mês (Regra 1) */}
-              <section className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
-                  <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Total de Receitas</span>
-                  <div className="text-xl font-bold text-emerald-600">R$ {totalReceitasMes.toFixed(2)}</div>
-                  <p className="text-[11px] text-slate-400">Receitas do mês selecionado</p>
+              {/* 3 Indicadores de Resumo Financeiro (Regra 3) */}
+              <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs space-y-1">
+                  <span className="text-[11px] font-bold uppercase text-emerald-700 tracking-wider">Total de Entradas</span>
+                  <div className="text-xl font-bold text-emerald-600">R$ {totalEntradasMes.toFixed(2)}</div>
+                  <p className="text-[11px] text-slate-400">Soma de todas as receitas do mês</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-xs space-y-1">
+                  <span className="text-[11px] font-bold uppercase text-rose-700 tracking-wider">Total de Saídas</span>
+                  <div className="text-xl font-bold text-rose-600">R$ {totalSaidasMes.toFixed(2)}</div>
+                  <p className="text-[11px] text-slate-400">Soma de todas as despesas do mês</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
-                  <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Total de Despesas</span>
-                  <div className="text-xl font-bold text-rose-600">R$ {totalDespesasMes.toFixed(2)}</div>
-                  <p className="text-[11px] text-slate-400">Despesas do mês selecionado</p>
-                </div>
-
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
-                  <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Saldo do Período</span>
-                  <div className={`text-xl font-bold ${saldoPeriodoMes >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
-                    R$ {saldoPeriodoMes.toFixed(2)}
+                  <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">Saldo (Entradas - Saídas)</span>
+                  <div className={`text-xl font-bold ${saldoMes >= 0 ? 'text-indigo-900' : 'text-rose-600'}`}>
+                    R$ {saldoMes.toFixed(2)}
                   </div>
-                  <p className="text-[11px] text-slate-400">Receitas menos despesas</p>
-                </div>
-
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
-                  <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Total de Lançamentos</span>
-                  <div className="text-xl font-bold text-indigo-900">{totalLancamentosMes}</div>
-                  <p className="text-[11px] text-slate-400">Registros no período</p>
+                  <p className="text-[11px] text-slate-400">Resultado financeiro do período</p>
                 </div>
               </section>
 
-              {/* Filtros e Pesquisa (Regra 1) */}
+              {/* Filtros de Mês, Ano e Busca (Regra 4) */}
               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3 w-full md:w-auto">
                   <button onClick={handlePrevMonth} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer">
@@ -1219,16 +1209,6 @@ export default function App() {
                   />
 
                   <select
-                    value={selectedTypeFilter}
-                    onChange={(e) => setSelectedTypeFilter(e.target.value as any)}
-                    className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-medium"
-                  >
-                    <option value="all">Todos os Tipos</option>
-                    <option value="income">Apenas Receitas</option>
-                    <option value="expense">Apenas Despesas</option>
-                  </select>
-
-                  <select
                     value={selectedCategoryFilter}
                     onChange={(e) => setSelectedCategoryFilter(e.target.value)}
                     className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-medium"
@@ -1240,6 +1220,7 @@ export default function App() {
                   </select>
 
                   <button
+                    export-to-csv=""
                     onClick={exportToCSV}
                     className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
                   >
@@ -1249,19 +1230,26 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Tabela de Lançamentos (Regra 1) */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-                <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-900">Extrato de Lançamentos ({monthName})</h3>
-                  {selectedTransactionIds.length > 0 && (
-                    <button
-                      onClick={() => setIsBatchDeleteModalOpen(true)}
-                      className="flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition shadow-xs cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Excluir Selecionados ({selectedTransactionIds.length})</span>
-                    </button>
-                  )}
+              {selectedTransactionIds.length > 0 && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setIsBatchDeleteModalOpen(true)}
+                    className="flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition shadow-xs cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Excluir Selecionados ({selectedTransactionIds.length})</span>
+                  </button>
+                </div>
+              )}
+
+              {/* SEÇÃO 1: ENTRADAS (RECEITAS) (Regra 1 e 5) */}
+              <div className="bg-white rounded-xl border border-emerald-200 shadow-xs overflow-hidden space-y-2">
+                <div className="p-4 bg-emerald-50/70 border-b border-emerald-100 flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-emerald-900 flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+                    ENTRADAS (RECEITAS) — {monthName}
+                  </h3>
+                  <span className="text-xs font-bold text-emerald-700">Total: R$ {totalEntradasMes.toFixed(2)}</span>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -1269,8 +1257,8 @@ export default function App() {
                     <thead>
                       <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase font-semibold border-b border-slate-200">
                         <th className="p-3.5 w-10 text-center">
-                          <button onClick={toggleSelectAll} className="cursor-pointer text-slate-500">
-                            {filteredTransactions.length > 0 && selectedTransactionIds.length === filteredTransactions.length ? (
+                          <button onClick={() => toggleSelectAll('income')} className="cursor-pointer text-slate-500">
+                            {filteredIncomes.length > 0 && filteredIncomes.every(t => selectedTransactionIds.includes(t.id)) ? (
                               <CheckSquare className="w-4 h-4 text-emerald-600" />
                             ) : (
                               <Square className="w-4 h-4" />
@@ -1280,21 +1268,20 @@ export default function App() {
                         <th className="p-3.5">Situação</th>
                         <th className="p-3.5">Descrição</th>
                         <th className="p-3.5">Categoria</th>
-                        <th className="p-3.5">Tipo</th>
-                        <th className="p-3.5">Vencimento</th>
+                        <th className="p-3.5">Data</th>
                         <th className="p-3.5">Valor</th>
                         <th className="p-3.5 text-center">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs">
-                      {filteredTransactions.length === 0 ? (
+                      {filteredIncomes.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="p-8 text-center text-slate-400">
-                            Nenhum lançamento encontrado para os filtros selecionados.
+                          <td colSpan={7} className="p-6 text-center text-slate-400">
+                            Nenhuma entrada (receita) registrada para este período.
                           </td>
                         </tr>
                       ) : (
-                        filteredTransactions.map((t) => {
+                        filteredIncomes.map((t) => {
                           const isSelected = selectedTransactionIds.includes(t.id);
                           return (
                             <tr key={t.id} className={`hover:bg-slate-50/80 transition ${isSelected ? 'bg-indigo-50/40' : ''}`}>
@@ -1313,22 +1300,112 @@ export default function App() {
                                   }`}
                                 >
                                   {t.status === 'paid' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                                  <span>{t.status === 'paid' ? (t.type === 'income' ? 'Recebido' : 'Pago') : 'Pendente'}</span>
+                                  <span>{t.status === 'paid' ? 'Recebido' : 'Pendente'}</span>
                                 </button>
                               </td>
                               <td className="p-3.5 font-medium text-slate-800">
                                 {t.description}
-                                {t.installmentInfo && <div className="text-[10px] text-indigo-600 font-semibold">{t.installmentInfo}</div>}
+                                {t.installmentInfo && <div className="text-[10px] text-emerald-600 font-semibold">{t.installmentInfo}</div>}
                               </td>
                               <td className="p-3.5 text-slate-600">{t.category}</td>
-                              <td className="p-3.5">
-                                <span className={`px-2 py-0.5 rounded font-bold uppercase text-[10px] ${t.type === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                                  {t.type === 'income' ? 'Receita' : 'Despesa'}
-                                </span>
-                              </td>
                               <td className="p-3.5 text-slate-500">{t.dueDate || t.date}</td>
-                              <td className={`p-3.5 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                {t.type === 'income' ? '+' : '-'} R$ {t.amount.toFixed(2)}
+                              <td className="p-3.5 font-semibold text-emerald-600">
+                                + R$ {t.amount.toFixed(2)}
+                              </td>
+                              <td className="p-3.5 text-center space-x-2">
+                                <button
+                                  onClick={() => openEditModal(t)}
+                                  className="text-indigo-500 hover:text-indigo-700 transition p-1 rounded-md hover:bg-indigo-50 cursor-pointer inline-flex items-center gap-1 font-medium"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                  <span>Editar</span>
+                                </button>
+                                <button
+                                  onClick={() => confirmDelete(t)}
+                                  className="text-slate-400 hover:text-rose-600 transition p-1 rounded-md hover:bg-rose-50 cursor-pointer inline-flex items-center gap-1 font-medium"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Excluir</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* SEÇÃO 2: SAÍDAS (DESPESAS) (Regra 2 e 5) */}
+              <div className="bg-white rounded-xl border border-rose-200 shadow-xs overflow-hidden space-y-2">
+                <div className="p-4 bg-rose-50/70 border-b border-rose-100 flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-rose-900 flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
+                    SAÍDAS (DESPESAS) — {monthName}
+                  </h3>
+                  <span className="text-xs font-bold text-rose-700">Total: R$ {totalSaidasMes.toFixed(2)}</span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase font-semibold border-b border-slate-200">
+                        <th className="p-3.5 w-10 text-center">
+                          <button onClick={() => toggleSelectAll('expense')} className="cursor-pointer text-slate-500">
+                            {filteredExpenses.length > 0 && filteredExpenses.every(t => selectedTransactionIds.includes(t.id)) ? (
+                              <CheckSquare className="w-4 h-4 text-emerald-600" />
+                            ) : (
+                              <Square className="w-4 h-4" />
+                            )}
+                          </button>
+                        </th>
+                        <th className="p-3.5">Situação</th>
+                        <th className="p-3.5">Descrição</th>
+                        <th className="p-3.5">Categoria</th>
+                        <th className="p-3.5">Data</th>
+                        <th className="p-3.5">Valor</th>
+                        <th className="p-3.5 text-center">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {filteredExpenses.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-6 text-center text-slate-400">
+                            Nenhuma saída (despesa) registrada para este período.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredExpenses.map((t) => {
+                          const isSelected = selectedTransactionIds.includes(t.id);
+                          return (
+                            <tr key={t.id} className={`hover:bg-slate-50/80 transition ${isSelected ? 'bg-indigo-50/40' : ''}`}>
+                              <td className="p-3.5 text-center">
+                                <button onClick={() => toggleSelectOne(t.id)} className="cursor-pointer text-slate-500">
+                                  {isSelected ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4" />}
+                                </button>
+                              </td>
+                              <td className="p-3.5">
+                                <button
+                                  onClick={() => toggleStatus(t.id)}
+                                  className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full cursor-pointer transition ${
+                                    t.status === 'paid'
+                                      ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                      : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                  }`}
+                                >
+                                  {t.status === 'paid' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                                  <span>{t.status === 'paid' ? 'Pago' : 'Pendente'}</span>
+                                </button>
+                              </td>
+                              <td className="p-3.5 font-medium text-slate-800">
+                                {t.description}
+                                {t.installmentInfo && <div className="text-[10px] text-rose-600 font-semibold">{t.installmentInfo}</div>}
+                              </td>
+                              <td className="p-3.5 text-slate-600">{t.category}</td>
+                              <td className="p-3.5 text-slate-500">{t.dueDate || t.date}</td>
+                              <td className="p-3.5 font-semibold text-rose-600">
+                                - R$ {t.amount.toFixed(2)}
                               </td>
                               <td className="p-3.5 text-center space-x-2">
                                 <button
@@ -1598,7 +1675,7 @@ export default function App() {
         </main>
       </div>
 
-      {/* MODAL DE GERENCIAMENTO DE USUÁRIOS (ADMIN) */}
+      {/* MODAL DE GERENCIAMENTO DE USUÁRIOS */}
       {isUserManagementModalOpen && currentUser.role === 'admin' && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
