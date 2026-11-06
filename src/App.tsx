@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   PlusCircle, Trash2, X, Save, 
-  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, Shield, KeyRound, UserCheck, UserX, Menu, ArrowDownRight, Tag
+  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, Shield, KeyRound, UserCheck, UserX, Menu, ArrowDownRight, Tag, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -91,6 +91,7 @@ export default function App() {
 
   const [currentModule, setCurrentModule] = useState<'transactions' | 'accounts' | 'cards' | 'payables' | 'receivables' | 'cashflow' | 'budget' | 'reports' | 'settings'>('transactions');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const [isUserManagementModalOpen, setIsUserManagementModalOpen] = useState(false);
   const [newUsername, setNewUsername] = useState('');
@@ -167,7 +168,6 @@ export default function App() {
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
-  // Estados de edição de Lançamento
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editScope, setEditScope] = useState<'single' | 'forward'>('single');
@@ -178,17 +178,14 @@ export default function App() {
   const [editType, setEditType] = useState<'income' | 'expense'>('expense');
   const [isNatureChangeConfirmOpen, setIsNatureChangeConfirmOpen] = useState(false);
 
-  // Estados de Edição de Conta Bancária
   const [isEditAccountModalOpen, setIsEditAccountModalOpen] = useState(false);
   const [editingAccountOldName, setEditingAccountOldName] = useState('');
   const [editingAccountNewName, setEditingAccountNewName] = useState('');
 
-  // Estados de Edição de Categoria
   const [isEditCategoryModalOpen, setIsEditCategoryModalOpen] = useState(false);
   const [editingCategoryOldName, setEditingCategoryOldName] = useState('');
   const [editingCategoryNewName, setEditingCategoryNewName] = useState('');
 
-  // Estados de Edição de Cartão de Crédito
   const [isEditCardModalOpen, setIsEditCardModalOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardAccount | null>(null);
   const [editCardName, setEditCardName] = useState('');
@@ -852,7 +849,6 @@ export default function App() {
     setCreditCards(creditCards.filter(c => c.id !== id));
   };
 
-  // Funções de Edição para cadastros gerais (Contas, Cartões, Categorias)
   const openEditAccountModal = (accName: string) => {
     setEditingAccountOldName(accName);
     setEditingAccountNewName(accName);
@@ -1090,104 +1086,71 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col md:flex-row">
       
-      {/* MENU LATERAL DE NAVEGAÇÃO */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 transform transition-transform duration-200 ease-in-out md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col justify-between border-r border-slate-800 shadow-xl`}>
-        <div className="p-6 space-y-6">
+      {/* MENU LATERAL DE NAVEGAÇÃO RECOLHÍVEL E RESPONSIVO */}
+      <aside className={`fixed inset-y-0 left-0 z-40 bg-slate-900 text-slate-300 transform transition-all duration-300 ease-in-out md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0'} ${isSidebarCollapsed ? 'md:w-20' : 'md:w-64'} w-64 flex flex-col justify-between border-r border-slate-800 shadow-xl`}>
+        <div className="p-4 md:p-5 space-y-6">
           <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-            <div>
-              <h2 className="font-bold text-white text-base tracking-wide">Gestão Financeira</h2>
-              <p className="text-[11px] text-slate-400">Painel Operacional</p>
+            {!isSidebarCollapsed && (
+              <div className="overflow-hidden">
+                <h2 className="font-bold text-white text-sm md:text-base tracking-wide truncate">Gestão Financeira</h2>
+                <p className="text-[10px] text-slate-400">Painel Operacional</p>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                className="hidden md:flex p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                title={isSidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+              >
+                {isSidebarCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
+              </button>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white">
-              <X className="w-5 h-5" />
-            </button>
           </div>
 
-          <nav className="space-y-1.5">
-            <button
-              onClick={() => { setCurrentModule('transactions'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'transactions' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
-            >
-              <DollarSign className="w-4 h-4" />
-              <span>Lançamentos</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentModule('accounts'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'accounts' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
-            >
-              <Building2 className="w-4 h-4" />
-              <span>Contas Bancárias</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentModule('cards'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'cards' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
-            >
-              <CreditCard className="w-4 h-4" />
-              <span>Cartões de Crédito</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentModule('payables'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'payables' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
-            >
-              <Clock className="w-4 h-4" />
-              <span>Contas a Pagar</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentModule('receivables'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'receivables' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
-            >
-              <ArrowDownRight className="w-4 h-4" />
-              <span>Contas a Receber</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentModule('cashflow'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'cashflow' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
-            >
-              <TrendUp className="w-4 h-4" />
-              <span>Fluxo de Caixa</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentModule('budget'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'budget' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
-            >
-              <Target className="w-4 h-4" />
-              <span>Orçamento</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentModule('reports'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'reports' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span>Relatórios</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentModule('settings'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${currentModule === 'settings' ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'}`}
-            >
-              <Settings className="w-4 h-4" />
-              <span>Configurações</span>
-            </button>
+          <nav className="space-y-1.5 overflow-y-auto max-h-[calc(100vh-200px)]">
+            {[
+              { id: 'transactions', label: 'Lançamentos', icon: DollarSign },
+              { id: 'accounts', label: 'Contas Bancárias', icon: Building2 },
+              { id: 'cards', label: 'Cartões de Crédito', icon: CreditCard },
+              { id: 'payables', label: 'Contas a Pagar', icon: Clock },
+              { id: 'receivables', label: 'Contas a Receber', icon: ArrowDownRight },
+              { id: 'cashflow', label: 'Fluxo de Caixa', icon: TrendUp },
+              { id: 'budget', label: 'Orçamento', icon: Target },
+              { id: 'reports', label: 'Relatórios', icon: BarChart3 },
+              { id: 'settings', label: 'Configurações', icon: Settings },
+            ].map((item) => {
+              const IconComp = item.icon;
+              const isActive = currentModule === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => { setCurrentModule(item.id as any); setIsMobileMenuOpen(false); }}
+                  title={isSidebarCollapsed ? item.label : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${isActive ? 'bg-emerald-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-300'} ${isSidebarCollapsed ? 'justify-center' : ''}`}
+                >
+                  <IconComp className="w-4 h-4 shrink-0" />
+                  {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
+                </button>
+              );
+            })}
           </nav>
         </div>
 
-        <div className="p-4 border-t border-slate-800 bg-slate-950/50">
-          <div className="flex items-center justify-between text-xs">
-            <div>
-              <div className="font-bold text-white truncate max-w-[140px]">{currentUser.name}</div>
-              <div className="text-[10px] text-slate-400 capitalize">{currentUser.role === 'admin' ? 'Administrador' : 'Usuário'}</div>
-            </div>
+        <div className="p-3.5 border-t border-slate-800 bg-slate-950/50">
+          <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} text-xs`}>
+            {!isSidebarCollapsed && (
+              <div className="overflow-hidden pr-2">
+                <div className="font-bold text-white truncate text-xs">{currentUser.name}</div>
+                <div className="text-[10px] text-slate-400 capitalize">{currentUser.role === 'admin' ? 'Administrador' : 'Usuário'}</div>
+              </div>
+            )}
             <button
               onClick={handleLogout}
-              title="Sair"
-              className="p-2 text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+              title="Sair do Sistema"
+              className="p-2 text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer shrink-0"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -1195,8 +1158,8 @@ export default function App() {
         </div>
       </aside>
 
-      {/* CONTEÚDO PRINCIPAL */}
-      <div className="flex-1 flex flex-col min-w-0 md:pl-64">
+      {/* CONTEÚDO PRINCIPAL (COM MARGEM DINÂMICA BASEADA NO MENU) */}
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'}`}>
         
         <header className="bg-white border-b border-slate-200 px-4 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-xs">
           <div className="flex items-center gap-3">
@@ -1530,7 +1493,7 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 2: CONTAS BANCÁRIAS (Com Edição) */}
+          {/* MÓDULO 2: CONTAS BANCÁRIAS */}
           {currentModule === 'accounts' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-base font-bold text-slate-900">Contas Bancárias e Carteiras Cadastradas</h3>
@@ -1559,7 +1522,7 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 3: CARTÕES DE CRÉDITO (Com Edição) */}
+          {/* MÓDULO 3: CARTÕES DE CRÉDITO */}
           {currentModule === 'cards' && creditCards.length > 0 && activeCard && activeCardLimit && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -1775,7 +1738,7 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 9: CONFIGURAÇÕES (Com Edição de Categorias) */}
+          {/* MÓDULO 9: CONFIGURAÇÕES */}
           {currentModule === 'settings' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-6">
               <h3 className="text-base font-bold text-slate-900">Configurações do Sistema e Usuários</h3>
