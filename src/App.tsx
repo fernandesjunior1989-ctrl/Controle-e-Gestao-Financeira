@@ -187,8 +187,6 @@ export default function App() {
   const [editRecurrenceEndType, setEditRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
   const [editRecurrenceEndDate, setEditRecurrenceEndDate] = useState('');
 
-  const [isNatureChangeConfirmOpen, setIsNatureChangeConfirmOpen] = useState(false);
-
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
   const [deleteOption, setDeleteOption] = useState<'single' | 'forward' | 'all'>('single');
@@ -904,12 +902,6 @@ export default function App() {
   const handleAttemptSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTransaction) return;
-
-    if (editingTransaction.type !== editType) {
-      setIsNatureChangeConfirmOpen(true);
-      return;
-    }
-
     executeFinalEdit();
   };
 
@@ -1090,7 +1082,6 @@ export default function App() {
       }));
     }
 
-    setIsNatureChangeConfirmOpen(false);
     setIsEditModalOpen(false);
     setEditingTransaction(null);
   };
