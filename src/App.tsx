@@ -192,6 +192,10 @@ export default function App() {
   const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
 
+  // ESTADO PARA EXCLUSÃO DEFINITIVA INDIVIDUAL NA LIXEIRA
+  const [isPermanentDeleteModalOpen, setIsPermanentDeleteModalOpen] = useState(false);
+  const [permanentIdToDelete, setPermanentIdToDelete] = useState<string | null>(null);
+
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Outros');
   const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
@@ -1149,6 +1153,19 @@ export default function App() {
       }
       return t;
     }));
+  };
+
+  // EXCLUSÃO DEFINITIVA (REMOVE DO ARRAY PERMANENTEMENTE)
+  const confirmPermanentDelete = (id: string) => {
+    setPermanentIdToDelete(id);
+    setIsPermanentDeleteModalOpen(true);
+  };
+
+  const executePermanentDelete = () => {
+    if (!permanentIdToDelete) return;
+    setTransactions(transactions.filter(t => t.id !== permanentIdToDelete));
+    setIsPermanentDeleteModalOpen(false);
+    setPermanentIdToDelete(null);
   };
 
   const baseFiltered = periodTransactions.filter(t => {
@@ -2145,13 +2162,14 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL DA LIXEIRA COM BOTÃO DE EXCLUSÃO DEFINITIVA */}
       {isTrashModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b pb-3 border-slate-100">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <Trash className="w-5 h-5 text-rose-600" />
-                Lixeira de Lançamentos (Soft Delete)
+                Lixeira de Lançamentos
               </h3>
               <button
                 onClick={() => setIsTrashModalOpen(false)}
@@ -2169,7 +2187,7 @@ export default function App() {
                     <th className="p-3">Categoria</th>
                     <th className="p-3">Vencimento</th>
                     <th className="p-3">Valor</th>
-                    <th className="p-3 text-center">Restaurar</th>
+                    <th className="p-3 text-center">Ações na Lixeira</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -2188,13 +2206,21 @@ export default function App() {
                         <td className={`p-3 font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
                           {formatCurrency(t.amount)}
                         </td>
-                        <td className="p-3 text-center">
+                        <td className="p-3 text-center space-x-2">
                           <button
                             onClick={() => restoreFromTrash(t.id)}
-                            className="flex items-center gap-1 mx-auto bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                            className="inline-flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
                             <span>Restaurar</span>
+                          </button>
+                          <button
+                            onClick={() => confirmPermanentDelete(t.id)}
+                            className="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                            title="Excluir Definitivamente"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Excluir Definitivo</span>
                           </button>
                         </td>
                       </tr>
@@ -2211,6 +2237,42 @@ export default function App() {
                 className="px-5 py-2 text-sm font-medium bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition cursor-pointer"
               >
                 Fechar Lixeira
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DEFINITIVA */}
+      {isPermanentDeleteModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200 text-center">
+            <div className="mx-auto w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-slate-900">Exclusão Definitiva</h3>
+              <p className="text-xs text-slate-500">
+                Tem certeza que deseja excluir permanentemente este registro? Esta ação não poderá ser desfeita.
+              </p>
+            </div>
+
+            <div className="flex justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsPermanentDeleteModalOpen(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer border border-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={executePermanentDelete}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition shadow-sm cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Sim, Excluir</span>
               </button>
             </div>
           </div>
