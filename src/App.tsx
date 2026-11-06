@@ -106,7 +106,7 @@ export default function App() {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   });
 
-  // ANOS DINÂMICOS AUTOMÁTICOS (2 anos anteriores até 15 anos à frente)
+  // ANOS DINÂMICOS AUTOMÁTICOS
   const currentSystemYear = new Date().getFullYear();
   const availableYears = Array.from({ length: 18 }, (_, i) => (currentSystemYear - 2) + i);
 
@@ -174,17 +174,17 @@ export default function App() {
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
-  // ESTADOS DE EDIÇÃO COM SUPORTE A MODALIDADE E PARCELAS/RECORRÊNCIA
+  // ESTADOS DE EDIÇÃO
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [editScope, setEditScope] = useState<'single' | 'forward'>('single');
+  const [editScope, setEditScope] = useState<'single' | 'forward' | 'all'>('single');
   const [editDescription, setEditDescription] = useState('');
   const [editAmount, setEditAmount] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editType, setEditType] = useState<'income' | 'expense'>('expense');
   
-  // NOVOS ESTADOS PARA MODALIDADE NO EDITAR
+  // ESTADOS DE MODALIDADE NO EDITAR
   const [editLaunchMode, setEditLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
   const [editInstallmentModeType, setEditInstallmentModeType] = useState<'divide' | 'repeat'>('divide');
   const [editInstallmentsCount, setEditInstallmentsCount] = useState('12');
@@ -253,7 +253,7 @@ export default function App() {
 
   const parseFormattedNumber = (valStr: string): number => {
     if (!valStr) return 0;
-    const cleanStr = valStr.replace(/\./g, '').replace(',', '.');
+    const cleanStr = valStr.toString().replace(/\./g, '').replace(',', '.');
     return parseFloat(cleanStr) || 0;
   };
 
@@ -1006,13 +1006,23 @@ export default function App() {
 
   const openEditModal = (t: Transaction) => {
     setEditingTransaction(t);
-    setEditDescription(t.description);
+    // Remove marcadores numéricos de parcelamento se existirem para uma edição limpa
+    const cleanDesc = t.description.replace(/\s\(\d+\/\d+\)$/, '');
+    setEditDescription(cleanDesc);
     setEditAmount(t.amount.toString());
     setEditCategory(t.category);
     setEditDueDate(t.dueDate || t.date);
     setEditType(t.type);
     setEditScope('single');
-    setEditLaunchMode('single');
+
+    if (t.installmentInfo) {
+      setEditLaunchMode('installment');
+    } else if (t.recurringInfo) {
+      setEditLaunchMode('recurring');
+    } else {
+      setEditLaunchMode('single');
+    }
+
     setIsEditModalOpen(true);
   };
 
@@ -1028,18 +1038,21 @@ export default function App() {
     executeFinalEdit();
   };
 
+  // EXECUÇÃO DA EDIÇÃO SEM DUPLICAÇÃO
   const executeFinalEdit = () => {
     if (!editingTransaction) return;
     const newAmt = parseFormattedNumber(editAmount);
     if (newAmt <= 0) return;
 
-    // Se o usuário selecionou modalidade parcelada ou recorrente ao editar:
+    const targetGroup = editingTransaction.installmentGroup;
+
+    // 1. Se alterou a modalidade de Único para Parcelado ou Recorrente:
     if (editLaunchMode === 'installment' || editLaunchMode === 'recurring') {
-      // Remove o lançamento antigo (ou gera a nova série substituindo)
-      const filteredWithoutEdited = transactions.filter(t => t.id !== editingTransaction.id);
+      // Remove o lançamento original antigo para evitar duplicação
+      const filteredList = transactions.filter(t => t.id !== editingTransaction.id);
       
-      let newTransactionsList = [...filteredWithoutEdited];
-      const groupId = crypto.randomUUID();
+      let newTransactionsList = [...filteredList];
+      const newGroupId = crypto.randomUUID();
       const baseDate = editDueDate;
 
       if (editLaunchMode === 'installment') {
@@ -1071,8 +1084,8 @@ export default function App() {
               type: editType,
               status: 'pending',
               installmentInfo: `Parcela ${i}/${totalParts}`,
-              installmentGroup: groupId,
-              auditHistory: [...(editingTransaction.auditHistory || []), `Convertido em parcelado por ${currentUser.username} em ${new Date().toLocaleString()}`]
+              installmentGroup: newGroupId,
+              auditHistory: [...(editingTransaction.auditHistory || []), `Convertido para parcelado por ${currentUser.username} em ${new Date().toLocaleString()}`]
             };
             newTransactionsList.unshift(item);
           }
@@ -1094,8 +1107,8 @@ export default function App() {
               type: editType,
               status: 'pending',
               installmentInfo: `Parcela ${i}/${totalParts}`,
-              installmentGroup: groupId,
-              auditHistory: [...(editingTransaction.auditHistory || []), `Convertido em parcelado por ${currentUser.username} em ${new Date().toLocaleString()}`]
+              installmentGroup: newGroupId,
+              auditHistory: [...(editingTransaction.auditHistory || []), `Convertido para parcelado por ${currentUser.username} em ${new Date().toLocaleString()}`]
             };
             newTransactionsList.unshift(item);
           }
@@ -1144,8 +1157,8 @@ export default function App() {
             type: editType,
             status: i === 0 ? editingTransaction.status : 'pending',
             recurringInfo: `Recorrente (${editRecurrencePeriod})`,
-            installmentGroup: groupId,
-            auditHistory: [...(editingTransaction.auditHistory || []), `Convertido em recorrente por ${currentUser.username} em ${new Date().toLocaleString()}`]
+            installmentGroup: newGroupId,
+            auditHistory: [...(editingTransaction.auditHistory || []), `Convertido para recorrente por ${currentUser.username} em ${new Date().toLocaleString()}`]
           };
           newTransactionsList.unshift(item);
         }
@@ -1153,15 +1166,19 @@ export default function App() {
 
       setTransactions(newTransactionsList);
     } else {
-      // Edição padrão simples
-      const targetGroup = editingTransaction.installmentGroup;
-      const auditMsg = `Editado por ${currentUser.username} em ${new Date().toLocaleString()}: tipo alterado para ${editType === 'income' ? 'Receita' : 'Despesa'}, valor R$ ${newAmt}`;
+      // 2. Edição no mesmo lançamento (Modo Padrão / Único)
+      const auditMsg = `Editado por ${currentUser.username} em ${new Date().toLocaleString()}: alterado para R$ ${newAmt}`;
 
       setTransactions(transactions.map(t => {
+        // Atualiza o item exatamente selecionado
         if (t.id === editingTransaction.id) {
+          const formattedDesc = t.installmentInfo 
+            ? `${editDescription} (${t.installmentInfo.replace('Parcela ', '')})` 
+            : editDescription;
+
           return {
             ...t,
-            description: editDescription,
+            description: formattedDesc,
             amount: newAmt,
             category: editCategory,
             dueDate: editDueDate,
@@ -1169,14 +1186,37 @@ export default function App() {
             auditHistory: [...(t.auditHistory || []), auditMsg]
           };
         }
-        if (editScope === 'forward' && targetGroup && t.installmentGroup === targetGroup && t.dueDate > editingTransaction.dueDate) {
-          return {
-            ...t,
-            description: editDescription,
-            amount: newAmt,
-            category: editCategory
-          };
+
+        // Se for um grupo de parcelas/recorrências e o usuário escolheu estender a alteração:
+        if (targetGroup && t.installmentGroup === targetGroup) {
+          if (editScope === 'forward' && t.dueDate > editingTransaction.dueDate) {
+            const formattedDesc = t.installmentInfo 
+              ? `${editDescription} (${t.installmentInfo.replace('Parcela ', '')})` 
+              : editDescription;
+
+            return {
+              ...t,
+              description: formattedDesc,
+              amount: newAmt,
+              category: editCategory,
+              type: editType
+            };
+          }
+          if (editScope === 'all') {
+            const formattedDesc = t.installmentInfo 
+              ? `${editDescription} (${t.installmentInfo.replace('Parcela ', '')})` 
+              : editDescription;
+
+            return {
+              ...t,
+              description: formattedDesc,
+              amount: newAmt,
+              category: editCategory,
+              type: editType
+            };
+          }
         }
+
         return t;
       }));
     }
@@ -1277,7 +1317,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col md:flex-row">
       
-      {/* MENU LATERAL DE NAVEGAÇÃO RECOLHÍVEL E RESPONSIVO */}
+      {/* MENU LATERAL DE NAVEGAÇÃO */}
       <aside className={`fixed inset-y-0 left-0 z-40 bg-slate-900 text-slate-300 transform transition-all duration-300 ease-in-out md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0'} ${isSidebarCollapsed ? 'md:w-20' : 'md:w-64'} w-64 flex flex-col justify-between border-r border-slate-800 shadow-xl`}>
         <div className="p-4 md:p-5 space-y-6">
           <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -1349,7 +1389,7 @@ export default function App() {
         </div>
       </aside>
 
-      {/* CONTEÚDO PRINCIPAL (COM MARGEM DINÂMICA BASEADA NO MENU) */}
+      {/* CONTEÚDO PRINCIPAL */}
       <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'}`}>
         
         <header className="bg-white border-b border-slate-200 px-4 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-xs">
@@ -1419,7 +1459,7 @@ export default function App() {
                 </div>
               </section>
 
-              {/* BARRA DE FILTRO DE PERÍODO (DIA, MÊS, ANO) */}
+              {/* FILTRO DE PERÍODO */}
               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4">
                 <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2">
@@ -1447,7 +1487,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* CONTROLES NAVEGÁVEIS POR TIPO DE FILTRO */}
                   <div className="flex items-center gap-2 justify-center">
                     <button onClick={handlePrevPeriod} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer" title="Período anterior">
                       <ChevronLeft className="w-4 h-4" />
@@ -1505,7 +1544,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* BUSCA, SELEÇÃO DE CATEGORIA E EXPORTAÇÃO */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                   <input
                     type="text"
@@ -1550,7 +1588,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* SEÇÃO 1: ENTRADAS (RECEITAS) */}
+              {/* TABELA DE ENTRADAS */}
               <div className="bg-white rounded-xl border border-emerald-200 shadow-xs overflow-hidden space-y-2">
                 <div className="p-4 bg-emerald-50/70 border-b border-emerald-100 flex items-center justify-between">
                   <h3 className="text-sm font-bold text-emerald-900 flex items-center gap-2">
@@ -1645,7 +1683,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* SEÇÃO 2: SAÍDAS (DESPESAS) */}
+              {/* TABELA DE SAÍDAS */}
               <div className="bg-white rounded-xl border border-rose-200 shadow-xs overflow-hidden space-y-2">
                 <div className="p-4 bg-rose-50/70 border-b border-rose-100 flex items-center justify-between">
                   <h3 className="text-sm font-bold text-rose-900 flex items-center gap-2">
@@ -1743,7 +1781,7 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 2: CONTAS BANCÁRIAS */}
+          {/* DEMAIS MÓDULOS PERMANECEM MANTIDOS */}
           {currentModule === 'accounts' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-base font-bold text-slate-900">Contas Bancárias e Carteiras Cadastradas</h3>
@@ -1772,7 +1810,6 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 3: CARTÕES DE CRÉDITO */}
           {currentModule === 'cards' && creditCards.length > 0 && activeCard && activeCardLimit && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -1831,7 +1868,6 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 4: CONTAS A PAGAR */}
           {currentModule === 'payables' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-base font-bold text-slate-900">Contas a Pagar (Obrigações Financeiras Pendentes)</h3>
@@ -1868,7 +1904,6 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 5: CONTAS A RECEBER */}
           {currentModule === 'receivables' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-base font-bold text-slate-900">Contas a Receber (Valores Pendentes)</h3>
@@ -1905,7 +1940,6 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 6: FLUXO DE CAIXA */}
           {currentModule === 'cashflow' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-base font-bold text-slate-900">Projeção de Fluxo de Caixa (Próximos 6 Meses)</h3>
@@ -1926,7 +1960,6 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 7: ORÇAMENTO */}
           {currentModule === 'budget' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <div className="flex justify-between items-center">
@@ -1971,7 +2004,6 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 8: RELATÓRIOS */}
           {currentModule === 'reports' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-base font-bold text-slate-900">Relatórios e Demonstrativos Financeiros</h3>
@@ -1988,7 +2020,6 @@ export default function App() {
             </div>
           )}
 
-          {/* MÓDULO 9: CONFIGURAÇÕES */}
           {currentModule === 'settings' && (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-6">
               <h3 className="text-base font-bold text-slate-900">Configurações do Sistema e Usuários</h3>
@@ -2036,312 +2067,14 @@ export default function App() {
         </main>
       </div>
 
-      {/* MODAL DE EDIÇÃO DE CONTA BANCÁRIA */}
-      {isEditAccountModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200">
-            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">Editar Conta Bancária</h3>
-              <button onClick={() => setIsEditAccountModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSaveAccountEdit} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-semibold uppercase text-slate-500 mb-1">Nome da Conta</label>
-                <input
-                  type="text"
-                  required
-                  value={editingAccountNewName}
-                  onChange={(e) => setEditingAccountNewName(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setIsEditAccountModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold">Salvar Alterações</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE EDIÇÃO DE CATEGORIA */}
-      {isEditCategoryModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200">
-            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">Editar Categoria</h3>
-              <button onClick={() => setIsEditCategoryModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSaveCategoryEdit} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-semibold uppercase text-slate-500 mb-1">Nome da Categoria</label>
-                <input
-                  type="text"
-                  required
-                  value={editingCategoryNewName}
-                  onChange={(e) => setEditingCategoryNewName(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setIsEditCategoryModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold">Salvar Alterações</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE EDIÇÃO DE CARTÃO DE CRÉDITO */}
-      {isEditCardModalOpen && editingCard && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200">
-            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">Editar Cartão de Crédito</h3>
-              <button onClick={() => setIsEditCardModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSaveCardEdit} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold uppercase text-slate-500 mb-1">Nome do Cartão</label>
-                <input type="text" required value={editCardName} onChange={(e) => setEditCardName(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
-              </div>
-              <div>
-                <label className="block font-semibold uppercase text-slate-500 mb-1">Instituição / Banco</label>
-                <input type="text" value={editCardBank} onChange={(e) => setEditCardBank(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
-              </div>
-              <div>
-                <label className="block font-semibold uppercase text-slate-500 mb-1">Limite Total (R$)</label>
-                <input type="text" required value={editCardLimit} onChange={(e) => setEditCardLimit(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold uppercase text-slate-500 mb-1">Dia Fechamento</label>
-                  <input type="number" min="1" max="31" required value={editCardClosingDay} onChange={(e) => setEditCardClosingDay(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
-                </div>
-                <div>
-                  <label className="block font-semibold uppercase text-slate-500 mb-1">Dia Vencimento</label>
-                  <input type="number" min="1" max="31" required value={editCardDueDay} onChange={(e) => setEditCardDueDay(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t">
-                <button type="button" onClick={() => setIsEditCardModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold">Salvar Alterações</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE GERENCIAMENTO DE USUÁRIOS */}
-      {isUserManagementModalOpen && currentUser.role === 'admin' && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Shield className="w-5 h-5 text-indigo-600" />
-                Gerenciamento de Usuários e Níveis de Acesso
-              </h3>
-              <button
-                onClick={() => setIsUserManagementModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 space-y-3">
-              <h4 className="font-bold text-sm text-indigo-900">Cadastrar Novo Usuário</h4>
-              <form onSubmit={handleCreateUser} className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Nome Completo"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    className="border border-slate-300 rounded-lg p-2 text-xs bg-white"
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Login / Usuário"
-                    value={newUsername}
-                    onChange={(e) => setNewUsername(e.target.value)}
-                    className="border border-slate-300 rounded-lg p-2 text-xs bg-white"
-                  />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <input
-                    type="password"
-                    required
-                    placeholder="Senha Provisória"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="border border-slate-300 rounded-lg p-2 text-xs bg-white"
-                  />
-                  <select
-                    value={newRole}
-                    onChange={(e) => setNewRole(e.target.value as any)}
-                    className="border border-slate-300 rounded-lg p-2 text-xs bg-white font-medium"
-                  >
-                    <option value="user">Usuário Comum</option>
-                    <option value="admin">Administrador</option>
-                  </select>
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition cursor-pointer"
-                  >
-                    Cadastrar Usuário
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-700 uppercase">Usuários Cadastrados:</span>
-              <div className="space-y-2">
-                {users.map(u => (
-                  <div key={u.id} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
-                    <div>
-                      <div className="font-bold text-slate-800 flex items-center gap-2">
-                        {u.name} (@{u.username})
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${u.role === 'admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200 text-slate-700'}`}>
-                          {u.role === 'admin' ? 'Admin' : 'Usuário'}
-                        </span>
-                      </div>
-                      <div className="text-slate-400 text-[10px] mt-0.5">Status: {u.active ? <strong className="text-emerald-600">Ativo</strong> : <strong className="text-rose-600">Inativo</strong>}</div>
-                    </div>
-                    <button
-                      onClick={() => toggleUserActiveStatus(u.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${u.active ? 'bg-rose-50 hover:bg-rose-100 text-rose-700' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'}`}
-                    >
-                      {u.active ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
-                      <span>{u.active ? 'Desativar' : 'Ativar'}</span>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsUserManagementModalOpen(false)}
-                className="px-5 py-2 text-sm font-medium bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition cursor-pointer"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE PAGAMENTO FLEXÍVEL DE FATURA */}
-      {isPaymentModalOpen && activeCard && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200">
-            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-emerald-600" />
-                Pagamento Flexível de Fatura
-              </h3>
-              <button
-                onClick={() => setIsPaymentModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleExecuteInvoicePayment} className="space-y-4">
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1">
-                <div>Cartão: <strong className="text-slate-800">{activeCard.name}</strong></div>
-                <div>Valor Total Pendente: <strong className="text-indigo-900">R$ {pendingInvoiceMonthTotal.toFixed(2)}</strong></div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Valor a Pagar (R$)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: 1365,11"
-                  value={paymentAmountInput}
-                  onChange={(e) => setPaymentAmountInput(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Juros / Encargos (R$)</label>
-                  <input
-                    type="text"
-                    value={paymentFeesInput}
-                    onChange={(e) => setPaymentFeesInput(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Data Efetiva</label>
-                  <input
-                    type="date"
-                    required
-                    value={paymentDateInput}
-                    onChange={(e) => setPaymentDateInput(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Conta Bancária de Débito</label>
-                <select
-                  value={paymentAccount}
-                  onChange={(e) => setPaymentAccount(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white font-medium"
-                >
-                  {accounts.map(acc => (
-                    <option key={acc} value={acc}>{acc}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsPaymentModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shadow-sm cursor-pointer"
-                >
-                  Confirmar Pagamento
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE EDIÇÃO POR COMPETÊNCIA E MODALIDADE */}
+      {/* MODAL DE EDIÇÃO DE LANÇAMENTO E MODALIDADE */}
       {isEditModalOpen && editingTransaction && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b pb-3 border-slate-100">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <ArrowRightLeft className="w-5 h-5 text-indigo-600" />
-                Editar Lançamento e Modalidade
+                Editar Lançamento
               </h3>
               <button
                 onClick={() => setIsEditModalOpen(false)}
@@ -2426,6 +2159,25 @@ export default function App() {
                   <option value="recurring">Recorrente (Contínuo)</option>
                 </select>
               </div>
+
+              {/* OPÇÃO DE ESCOPO DE EDIÇÃO CASO PERTENÇA A UM GRUPO */}
+              {editingTransaction.installmentGroup && editLaunchMode === 'single' && (
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2 text-xs">
+                  <span className="font-bold text-slate-700 block uppercase">Aplicar Alterações Em:</span>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="editScopeOpt" checked={editScope === 'single'} onChange={() => setEditScope('single')} />
+                    <span>Somente neste lançamento</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="editScopeOpt" checked={editScope === 'forward'} onChange={() => setEditScope('forward')} />
+                    <span>Neste e nos próximos lançamentos do grupo</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="editScopeOpt" checked={editScope === 'all'} onChange={() => setEditScope('all')} />
+                    <span>Em todos os lançamentos deste grupo</span>
+                  </label>
+                </div>
+              )}
 
               {editLaunchMode === 'installment' && (
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2 text-xs">
@@ -2521,7 +2273,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO DE MUDANÇA DE NATUREZA */}
+      {/* DEMAIS MODAIS MANUTENÇÃO */}
       {isNatureChangeConfirmOpen && editingTransaction && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200 text-center">
@@ -2532,7 +2284,7 @@ export default function App() {
             <div className="space-y-2">
               <h3 className="text-lg font-bold text-slate-900">Confirmação de Alteração de Natureza</h3>
               <p className="text-sm text-slate-500">
-                Você está alterando o tipo deste lançamento de <strong className="text-slate-800">{editingTransaction.type === 'income' ? 'Receita' : 'Despesa'}</strong> para <strong className="text-indigo-700">{editType === 'income' ? 'Receita' : 'Despesa'}</strong> nesta competência. Isso impactará os saldos e indicadores financeiros do mês.
+                Você está alterando o tipo deste lançamento de <strong className="text-slate-800">{editingTransaction.type === 'income' ? 'Receita' : 'Despesa'}</strong> para <strong className="text-indigo-700">{editType === 'income' ? 'Receita' : 'Despesa'}</strong>.
               </p>
             </div>
 
@@ -2556,7 +2308,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DA LIXEIRA */}
       {isTrashModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -2629,7 +2380,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
       {isDeleteModalOpen && transactionToDelete && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200">
@@ -2683,7 +2433,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE EXCLUSÃO EM LOTE */}
       {isBatchDeleteModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-5 relative border border-slate-200 text-center">
@@ -2722,202 +2471,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE METAS */}
-      {isBudgetModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Target className="w-5 h-5 text-amber-600" />
-                Definir Metas de Gastos por Categoria
-              </h3>
-              <button
-                onClick={() => setIsBudgetModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {categories.map(cat => (
-                <div key={cat} className="flex items-center justify-between gap-4">
-                  <span className="text-sm font-semibold text-slate-700 w-1/2">{cat}</span>
-                  <input
-                    type="text"
-                    placeholder="R$ 0,00"
-                    value={tempBudgets[cat] || ''}
-                    onChange={(e) => setTempBudgets({ ...tempBudgets, [cat]: parseFormattedNumber(e.target.value) })}
-                    className="w-1/2 border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsBudgetModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => { setBudgets(tempBudgets); setIsBudgetModalOpen(false); }}
-                className="px-5 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition shadow-sm cursor-pointer"
-              >
-                Salvar Metas
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE CADASTROS */}
-      {isManageModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Settings className="w-5 h-5 text-indigo-600" />
-                Gerenciar Cartões e Cadastros
-              </h3>
-              <button
-                onClick={() => setIsManageModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="border border-indigo-100 bg-indigo-50/40 p-4 rounded-xl space-y-4">
-              <h4 className="font-bold text-sm text-indigo-900 flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-indigo-600" />
-                Cadastrar Novo Cartão de Crédito
-              </h4>
-
-              <form onSubmit={handleAddCreditCard} className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Nome do Cartão (Ex: Nubank)"
-                    value={newCardName}
-                    onChange={(e) => setNewCardName(e.target.value)}
-                    className="border border-slate-300 rounded-lg p-2 text-xs bg-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Instituição / Banco"
-                    value={newCardBank}
-                    onChange={(e) => setNewCardBank(e.target.value)}
-                    className="border border-slate-300 rounded-lg p-2 text-xs bg-white"
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Limite Total (R$)"
-                    value={newCardLimit}
-                    onChange={(e) => setNewCardLimit(e.target.value)}
-                    className="border border-slate-300 rounded-lg p-2 text-xs bg-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Dia de Fechamento</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="31"
-                      required
-                      value={newCardClosingDay}
-                      onChange={(e) => setNewCardClosingDay(e.target.value)}
-                      className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Dia de Vencimento</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="31"
-                      required
-                      value={newCardDueDay}
-                      onChange={(e) => setNewCardDueDay(e.target.value)}
-                      className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Compra no Fechamento</label>
-                    <select
-                      value={newCardRule}
-                      onChange={(e) => setNewCardRule(e.target.value as any)}
-                      className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white font-medium"
-                    >
-                      <option value="next">Próxima Fatura</option>
-                      <option value="current">Fatura Atual</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition cursor-pointer"
-                  >
-                    Salvar Cartão
-                  </button>
-                </div>
-              </form>
-
-              <div className="space-y-2 pt-2 border-t border-indigo-100">
-                <span className="text-xs font-bold text-slate-600">Cartões Ativos:</span>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {creditCards.map(card => (
-                    <div key={card.id} className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 text-xs">
-                      <div>
-                        <div className="font-bold text-slate-800">{card.name} ({card.bank})</div>
-                        <div className="text-slate-400 text-[10px]">
-                          Fecha dia {card.closingDay} | Vence dia {card.dueDay} | R$ {card.totalLimit.toFixed(2)}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openEditCardModal(card)}
-                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
-                          title="Editar Cartão"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCard(card.id)}
-                          className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsManageModalOpen(false)}
-                className="px-5 py-2 text-sm font-medium bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition cursor-pointer"
-              >
-                Concluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE NOVO LANÇAMENTO */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -2936,42 +2489,38 @@ export default function App() {
 
             <form onSubmit={handleAddTransaction} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Descrição
-                </label>
+                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Descrição</label>
                 <input
                   type="text"
                   required
                   placeholder="Ex: Aluguel, Supermercado..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    {launchMode === 'installment' && installmentModeType === 'divide' ? 'Valor Total da Compra (R$)' : 'Valor (R$)'}
+                    {launchMode === 'installment' && installmentModeType === 'divide' ? 'Valor Total (R$)' : 'Valor (R$)'}
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="Ex: 1365.11 ou 1365,11"
+                    placeholder="Ex: 1365,11"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Tipo
-                  </label>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Tipo</label>
                   <select
                     value={type}
                     onChange={(e) => setType(e.target.value as any)}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white"
                   >
                     <option value="expense">Despesa (Saída)</option>
                     <option value="income">Receita (Entrada)</option>
@@ -2981,13 +2530,11 @@ export default function App() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Conta / Cartão
-                  </label>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Conta / Cartão</label>
                   <select
                     value={paymentSource}
                     onChange={(e) => setPaymentSource(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-medium"
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white font-medium"
                   >
                     <optgroup label="Cartões de Crédito">
                       {creditCards.map(c => (
@@ -3003,13 +2550,11 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Categoria
-                  </label>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Categoria</label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white"
                   >
                     {categories.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
@@ -3020,26 +2565,22 @@ export default function App() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Data Inicial (1ª Parcela)
-                  </label>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Data Inicial</label>
                   <input
                     type="date"
                     required
                     value={purchaseDate}
                     onChange={(e) => setPurchaseDate(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                    Modalidade
-                  </label>
+                  <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Modalidade</label>
                   <select
                     value={launchMode}
                     onChange={(e) => setLaunchMode(e.target.value as any)}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-semibold text-indigo-900"
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white font-semibold text-indigo-900"
                   >
                     <option value="single">Lançamento Único</option>
                     <option value="installment">Parcelado (Finito)</option>
@@ -3051,14 +2592,14 @@ export default function App() {
               {launchMode === 'installment' && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Modalidade de Parcelamento</label>
+                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Tipo de Parcelamento</label>
                     <select
                       value={installmentModeType}
                       onChange={(e) => setInstallmentModeType(e.target.value as any)}
                       className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white font-medium"
                     >
-                      <option value="divide">Modalidade 1 – Dividir valor total pelas parcelas</option>
-                      <option value="repeat">Modalidade 2 – Repetir valor informado em cada parcela</option>
+                      <option value="divide">Dividir valor total pelas parcelas</option>
+                      <option value="repeat">Repetir valor informado em cada parcela</option>
                     </select>
                   </div>
 
@@ -3074,23 +2615,6 @@ export default function App() {
                       ))}
                     </select>
                   </div>
-
-                  {amount && (
-                    <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs text-indigo-900 space-y-1">
-                      {installmentModeType === 'divide' ? (
-                        <>
-                          <div>Valor Total: <strong>R$ {parseFormattedNumber(amount).toFixed(2)}</strong></div>
-                          <div>Resultado: <strong>{installmentsCount}x de R$ {(parseFormattedNumber(amount) / parseInt(installmentsCount)).toFixed(2)}</strong></div>
-                        </>
-                      ) : (
-                        <>
-                          <div>Valor de cada parcela: <strong>R$ {parseFormattedNumber(amount).toFixed(2)}</strong></div>
-                          <div>Quantidade: <strong>{installmentsCount}x</strong></div>
-                          <div>Valor total do compromisso: <strong>R$ {(parseFormattedNumber(amount) * parseInt(installmentsCount)).toFixed(2)}</strong></div>
-                        </>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
 
