@@ -235,6 +235,12 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCardView, setSelectedCardView] = useState<string>(creditCards[0]?.id || '');
 
+  const parseFormattedNumber = (valStr: string): number => {
+    if (!valStr) return 0;
+    const cleanStr = valStr.replace(/\./g, '').replace(',', '.');
+    return parseFloat(cleanStr) || 0;
+  };
+
   useEffect(() => {
     localStorage.setItem('@controle_financeiro_transactions', JSON.stringify(transactions));
   }, [transactions]);
@@ -588,9 +594,9 @@ export default function App() {
   const handleExecuteInvoicePayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeCard) return;
-    const paidVal = parseFloat(paymentAmountInput);
-    const feesVal = parseFloat(paymentFeesInput) || 0;
-    if (isNaN(paidVal) || paidVal <= 0) return;
+    const paidVal = parseFormattedNumber(paymentAmountInput);
+    const feesVal = parseFormattedNumber(paymentFeesInput);
+    if (paidVal <= 0) return;
 
     const newPayment: InvoicePayment = {
       id: crypto.randomUUID(),
@@ -668,9 +674,9 @@ export default function App() {
 
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!description || !amount) return;
+    const baseAmount = parseFormattedNumber(amount);
+    if (!description || baseAmount <= 0) return;
 
-    const baseAmount = parseFloat(amount);
     let newTransactionsList = [...transactions];
     const groupId = crypto.randomUUID();
 
@@ -827,13 +833,14 @@ export default function App() {
 
   const handleAddCreditCard = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCardName || !newCardLimit) return;
+    const limitVal = parseFormattedNumber(newCardLimit);
+    if (!newCardName || limitVal <= 0) return;
 
     const newCard: CreditCardAccount = {
       id: `card-${crypto.randomUUID()}`,
       name: newCardName,
       bank: newCardBank || newCardName,
-      totalLimit: parseFloat(newCardLimit),
+      totalLimit: limitVal,
       closingDay: parseInt(newCardClosingDay),
       dueDay: parseInt(newCardDueDay),
       includeOnClosingDayRule: newCardRule
@@ -914,7 +921,7 @@ export default function App() {
           ...c,
           name: editCardName,
           bank: editCardBank || editCardName,
-          totalLimit: parseFloat(editCardLimit) || c.totalLimit,
+          totalLimit: parseFormattedNumber(editCardLimit) || c.totalLimit,
           closingDay: parseInt(editCardClosingDay) || c.closingDay,
           dueDay: parseInt(editCardDueDay) || c.dueDay,
           includeOnClosingDayRule: editCardRule
@@ -961,8 +968,8 @@ export default function App() {
 
   const executeFinalEdit = () => {
     if (!editingTransaction) return;
-    const newAmt = parseFloat(editAmount);
-    if (isNaN(newAmt)) return;
+    const newAmt = parseFormattedNumber(editAmount);
+    if (newAmt <= 0) return;
 
     const targetGroup = editingTransaction.installmentGroup;
     const auditMsg = `Editado por ${currentUser.username} em ${new Date().toLocaleString()}: tipo alterado para ${editType === 'income' ? 'Receita' : 'Despesa'}, valor R$ ${newAmt}`;
@@ -1867,7 +1874,7 @@ export default function App() {
               </div>
               <div>
                 <label className="block font-semibold uppercase text-slate-500 mb-1">Limite Total (R$)</label>
-                <input type="number" step="0.01" required value={editCardLimit} onChange={(e) => setEditCardLimit(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
+                <input type="text" required value={editCardLimit} onChange={(e) => setEditCardLimit(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -2020,9 +2027,9 @@ export default function App() {
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Valor a Pagar (R$)</label>
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text"
                   required
+                  placeholder="Ex: 1365,11"
                   value={paymentAmountInput}
                   onChange={(e) => setPaymentAmountInput(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
@@ -2033,8 +2040,7 @@ export default function App() {
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Juros / Encargos (R$)</label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     value={paymentFeesInput}
                     onChange={(e) => setPaymentFeesInput(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
@@ -2118,8 +2124,7 @@ export default function App() {
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Valor (R$)</label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     required
                     value={editAmount}
                     onChange={(e) => setEditAmount(e.target.value)}
@@ -2421,11 +2426,10 @@ export default function App() {
                 <div key={cat} className="flex items-center justify-between gap-4">
                   <span className="text-sm font-semibold text-slate-700 w-1/2">{cat}</span>
                   <input
-                    type="number"
-                    step="50"
-                    placeholder="R$ 0.00"
+                    type="text"
+                    placeholder="R$ 0,00"
                     value={tempBudgets[cat] || ''}
-                    onChange={(e) => setTempBudgets({ ...tempBudgets, [cat]: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => setTempBudgets({ ...tempBudgets, [cat]: parseFormattedNumber(e.target.value) })}
                     className="w-1/2 border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
@@ -2493,8 +2497,7 @@ export default function App() {
                     className="border border-slate-300 rounded-lg p-2 text-xs bg-white"
                   />
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     required
                     placeholder="Limite Total (R$)"
                     value={newCardLimit}
@@ -2634,10 +2637,9 @@ export default function App() {
                     {launchMode === 'installment' && installmentModeType === 'divide' ? 'Valor Total da Compra (R$)' : 'Valor (R$)'}
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     required
-                    placeholder="0.00"
+                    placeholder="Ex: 1365.11 ou 1365,11"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -2755,18 +2757,18 @@ export default function App() {
                     </select>
                   </div>
 
-                  {amount && !isNaN(parseFloat(amount)) && (
+                  {amount && (
                     <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs text-indigo-900 space-y-1">
                       {installmentModeType === 'divide' ? (
                         <>
-                          <div>Valor Total: <strong>R$ {parseFloat(amount).toFixed(2)}</strong></div>
-                          <div>Resultado: <strong>{installmentsCount}x de R$ {(parseFloat(amount) / parseInt(installmentsCount)).toFixed(2)}</strong></div>
+                          <div>Valor Total: <strong>R$ {parseFormattedNumber(amount).toFixed(2)}</strong></div>
+                          <div>Resultado: <strong>{installmentsCount}x de R$ {(parseFormattedNumber(amount) / parseInt(installmentsCount)).toFixed(2)}</strong></div>
                         </>
                       ) : (
                         <>
-                          <div>Valor de cada parcela: <strong>R$ {parseFloat(amount).toFixed(2)}</strong></div>
+                          <div>Valor de cada parcela: <strong>R$ {parseFormattedNumber(amount).toFixed(2)}</strong></div>
                           <div>Quantidade: <strong>{installmentsCount}x</strong></div>
-                          <div>Valor total do compromisso: <strong>R$ {(parseFloat(amount) * parseInt(installmentsCount)).toFixed(2)}</strong></div>
+                          <div>Valor total do compromisso: <strong>R$ {(parseFormattedNumber(amount) * parseInt(installmentsCount)).toFixed(2)}</strong></div>
                         </>
                       )}
                     </div>
