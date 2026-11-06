@@ -704,7 +704,9 @@ export default function App() {
       }
     } else if (launchMode === 'recurring') {
       const baseDateObj = new Date(purchaseDate + 'T00:00:00');
-      let iterations = 12;
+      
+      // Se for indeterminado, geramos 5 anos de ocorrências automáticas (60 meses), cobrindo largamente o futuro até que o usuário decida encerrar ou alterar.
+      let iterations = 60;
       
       let stepDays = 30;
       if (recurrencePeriod === 'Diária') stepDays = 1;
@@ -906,7 +908,7 @@ export default function App() {
         }
       } else if (editLaunchMode === 'recurring') {
         const baseDateObj = new Date(baseDate + 'T00:00:00');
-        let iterations = 12;
+        let iterations = 60;
         let stepDays = 30;
         if (editRecurrencePeriod === 'Diária') stepDays = 1;
         else if (editRecurrencePeriod === 'Semanal') stepDays = 7;
