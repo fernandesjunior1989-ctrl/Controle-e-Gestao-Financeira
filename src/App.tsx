@@ -130,7 +130,7 @@ export default function App() {
     return [];
   });
 
-  const [invoicePayments, setInvoicePayments] = useState<InvoicePayment[]>(() => {
+  const [invoicePayments] = useState<InvoicePayment[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_invoice_payments');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
