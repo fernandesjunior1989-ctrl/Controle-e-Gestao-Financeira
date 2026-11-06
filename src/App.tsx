@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   PlusCircle, Trash2, X, Save, 
-  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, KeyRound, Menu, ArrowDownRight, Tag, PanelLeftClose, PanelLeftOpen, Calendar
+  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, KeyRound, Menu, ArrowDownRight, Tag, PanelLeftClose, PanelLeftOpen, Calendar, Sparkles
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -164,6 +164,7 @@ export default function App() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
+  const [duplicateMessage, setDuplicateMessage] = useState<string | null>(null);
 
   // ESTADOS DE EDIÇÃO
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -175,7 +176,6 @@ export default function App() {
   const [editDueDate, setEditDueDate] = useState('');
   const [editType, setEditType] = useState<'income' | 'expense'>('expense');
   
-  // ESTADOS DE MODALIDADE NO EDITAR
   const [editLaunchMode, setEditLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
   const [editInstallmentModeType, setEditInstallmentModeType] = useState<'divide' | 'repeat'>('divide');
   const [editInstallmentsCount, setEditInstallmentsCount] = useState('12');
@@ -413,7 +413,7 @@ export default function App() {
     );
   }
 
-  // NAVEGAÇÃO DE NAVEGAÇÃO TEMPORAL
+  // NAVEGAÇÃO TEMPORAL
   const handlePrevPeriod = () => {
     const d = new Date(currentDate);
     if (periodFilterMode === 'day') {
@@ -470,8 +470,71 @@ export default function App() {
   const activeTransactions = transactions.filter(t => !t.deletedAt);
   const trashedTransactions = transactions.filter(t => t.deletedAt);
 
+  // FUNÇÃO DE DETECÇÃO E REMOÇÃO DE DUPLICADOS (COMPARA DESCRIÇÃO, VALOR, DATA E TIPO)
+  const handleRemoveDuplicates = () => {
+    const seen = new Set<string>();
+    let removedCount = 0;
+
+    const cleanedTransactions = transactions.filter(t => {
+      // Chave única para identificar duplicatas idênticas
+      const key = `${t.description.trim().toLowerCase()}_${t.amount}_${t.dueDate || t.date}_${t.type}_${t.account}`;
+      if (seen.has(key)) {
+        removedCount++;
+        return false; // Remove duplicada
+      }
+      seen.add(key);
+      return true;
+    });
+
+    setTransactions(cleanedTransactions);
+    setDuplicateMessage(`Limpeza concluída! ${removedCount} lançamento(s) duplicado(s) removido(s).`);
+    setTimeout(() => setDuplicateMessage(null), 4000);
+  };
+
+  // EXPANSÃO DINÂMICA DE RECORRÊNCIAS SEM FIM (PRAZO INDETERMINADO)
+  const getExpandedTransactions = () => {
+    const result: Transaction[] = [];
+    const viewedYear = currentYear;
+    const viewedMonth = currentMonth;
+
+    activeTransactions.forEach(t => {
+      if (t.recurringInfo && t.recurringInfo.includes('Mensal') && !t.installmentGroup) {
+        const origDate = new Date((t.dueDate || t.date) + 'T00:00:00');
+        const origYear = origDate.getFullYear();
+        const origMonth = origDate.getMonth();
+        const origDay = origDate.getDate();
+
+        const diffMonths = (viewedYear - origYear) * 12 + (viewedMonth - origMonth);
+        if (diffMonths >= 0) {
+          const targetDateObj = new Date(viewedYear, viewedMonth, Math.min(origDay, 28));
+          const targetDateStr = targetDateObj.toISOString().split('T')[0];
+
+          const existsReal = activeTransactions.some(sub => 
+            sub.installmentGroup === t.installmentGroup && 
+            sub.dueDate?.startsWith(`${viewedYear}-${String(viewedMonth + 1).padStart(2, '0')}`)
+          );
+
+          if (!existsReal || diffMonths === 0) {
+            result.push({
+              ...t,
+              id: diffMonths === 0 ? t.id : `${t.id}-rec-${viewedYear}-${viewedMonth}`,
+              dueDate: targetDateStr,
+              date: targetDateStr
+            });
+            return;
+          }
+        }
+      }
+      result.push(t);
+    });
+
+    return result;
+  };
+
+  const expandedActiveTransactions = getExpandedTransactions();
+
   // FILTRAGEM DINÂMICA DE TRANSAÇÕES POR DIA / MÊS / ANO
-  const periodTransactions = activeTransactions.filter(t => {
+  const periodTransactions = expandedActiveTransactions.filter(t => {
     const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
     if (periodFilterMode === 'day') {
       return (
@@ -505,7 +568,7 @@ export default function App() {
     const pMonth = projDate.getMonth();
     const pName = projDate.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
 
-    const pTxs = activeTransactions.filter(t => {
+    const pTxs = expandedActiveTransactions.filter(t => {
       const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
       return targetDate.getFullYear() === pYear && targetDate.getMonth() === pMonth;
     });
@@ -526,7 +589,7 @@ export default function App() {
     }
     const prevMonthKey = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}`;
 
-    const prevTxs = activeTransactions.filter(t => {
+    const prevTxs = expandedActiveTransactions.filter(t => {
       if (t.creditCardId !== cardId) return false;
       const d = new Date((t.dueDate || t.date) + 'T00:00:00');
       return d.getFullYear() === prevYear && d.getMonth() === prevMonth;
@@ -547,7 +610,7 @@ export default function App() {
     const card = creditCards.find(c => c.id === cardId);
     if (!card) return { total: 0, used: 0, available: 0 };
     
-    const used = activeTransactions
+    const used = expandedActiveTransactions
       .filter(t => t.creditCardId === cardId && t.status === 'pending')
       .reduce((acc, t) => acc + t.amount, 0);
 
@@ -704,9 +767,7 @@ export default function App() {
       }
     } else if (launchMode === 'recurring') {
       const baseDateObj = new Date(purchaseDate + 'T00:00:00');
-      
-      // Se for indeterminado, geramos 5 anos de ocorrências automáticas (60 meses), cobrindo largamente o futuro até que o usuário decida encerrar ou alterar.
-      let iterations = 60;
+      let iterations = recurrenceEndType === 'indeterminate' ? 1 : 12;
       
       let stepDays = 30;
       if (recurrencePeriod === 'Diária') stepDays = 1;
@@ -908,7 +969,7 @@ export default function App() {
         }
       } else if (editLaunchMode === 'recurring') {
         const baseDateObj = new Date(baseDate + 'T00:00:00');
-        let iterations = 60;
+        let iterations = editRecurrenceEndType === 'indeterminate' ? 1 : 12;
         let stepDays = 30;
         if (editRecurrencePeriod === 'Diária') stepDays = 1;
         else if (editRecurrencePeriod === 'Semanal') stepDays = 7;
@@ -1227,6 +1288,16 @@ export default function App() {
           {currentModule === 'transactions' && (
             <div className="space-y-6">
               
+              {duplicateMessage && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3.5 rounded-xl text-xs flex items-center justify-between shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{duplicateMessage}</span>
+                  </div>
+                  <button onClick={() => setDuplicateMessage(null)} className="text-emerald-600 hover:text-emerald-800 font-bold">×</button>
+                </div>
+              )}
+
               <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs space-y-1">
                   <span className="text-[11px] font-bold uppercase text-emerald-700 tracking-wider">Total de Entradas</span>
@@ -1249,7 +1320,7 @@ export default function App() {
                 </div>
               </section>
 
-              {/* FILTRO DE PERÍODO */}
+              {/* FILTRO DE PERÍODO & AÇÕES DE DUPLICADOS */}
               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4">
                 <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2">
@@ -1344,6 +1415,15 @@ export default function App() {
                   />
 
                   <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <button
+                      onClick={handleRemoveDuplicates}
+                      className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
+                      title="Remove automaticamente lançamentos repetidos com mesma descrição, valor e data"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Limpar Duplicados</span>
+                    </button>
+
                     <select
                       value={selectedCategoryFilter}
                       onChange={(e) => setSelectedCategoryFilter(e.target.value)}
@@ -1654,10 +1734,10 @@ export default function App() {
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-base font-bold text-slate-900">Contas a Pagar (Obrigações Financeiras Pendentes)</h3>
               <div className="space-y-2">
-                {activeTransactions.filter(t => t.type === 'expense' && t.status === 'pending').length === 0 ? (
+                {expandedActiveTransactions.filter(t => t.type === 'expense' && t.status === 'pending').length === 0 ? (
                   <p className="text-xs text-slate-400 py-6 text-center">Nenhuma conta a pagar pendente no momento.</p>
                 ) : (
-                  activeTransactions.filter(t => t.type === 'expense' && t.status === 'pending').map(t => (
+                  expandedActiveTransactions.filter(t => t.type === 'expense' && t.status === 'pending').map(t => (
                     <div key={t.id} className="flex justify-between items-center bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
                       <div>
                         <div className="font-bold text-slate-800">{t.description}</div>
@@ -1690,10 +1770,10 @@ export default function App() {
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-base font-bold text-slate-900">Contas a Receber (Valores Pendentes)</h3>
               <div className="space-y-2">
-                {activeTransactions.filter(t => t.type === 'income' && t.status === 'pending').length === 0 ? (
+                {expandedActiveTransactions.filter(t => t.type === 'income' && t.status === 'pending').length === 0 ? (
                   <p className="text-xs text-slate-400 py-6 text-center">Nenhuma conta a receber pendente no momento.</p>
                 ) : (
-                  activeTransactions.filter(t => t.type === 'income' && t.status === 'pending').map(t => (
+                  expandedActiveTransactions.filter(t => t.type === 'income' && t.status === 'pending').map(t => (
                     <div key={t.id} className="flex justify-between items-center bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
                       <div>
                         <div className="font-bold text-slate-800">{t.description}</div>
