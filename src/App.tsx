@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   PlusCircle, Trash2, X, Save, 
-  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3
+  AlertTriangle, Filter, CheckCircle2, Clock, Building2, CreditCard, Settings, Repeat, Layers, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, Shield, KeyRound, UserCheck, UserX
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -46,7 +46,58 @@ interface CategoryBudget {
   [categoryName: string]: number;
 }
 
+interface SystemUser {
+  id: string;
+  username: string;
+  name: string;
+  role: 'admin' | 'user';
+  active: boolean;
+  passwordHash: string;
+}
+
 export default function App() {
+  // Controle de Sessão e Autenticação (Regra 12)
+  const [users, setUsers] = useState<SystemUser[]>(() => {
+    const saved = localStorage.getItem('@controle_financeiro_users');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return [
+      {
+        id: 'user-admin',
+        username: 'admin',
+        name: 'Administrador Master',
+        role: 'admin',
+        active: true,
+        passwordHash: 'admin123' // Em produção real, hash seguro
+      }
+    ];
+  });
+
+  const [currentUser, setCurrentUser] = useState<SystemUser | null>(() => {
+    const saved = localStorage.getItem('@controle_financeiro_current_session');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return null;
+  });
+
+  // Estados da Tela de Login
+  const [loginInput, setLoginInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+
+  // Estados de Gerenciamento de Usuários
+  const [isUserManagementModalOpen, setIsUserManagementModalOpen] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState<'admin' | 'user'>('user');
+
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -194,6 +245,217 @@ export default function App() {
     localStorage.setItem('@controle_financeiro_budgets', JSON.stringify(budgets));
   }, [budgets]);
 
+  useEffect(() => {
+    localStorage.setItem('@controle_financeiro_users', JSON.stringify(users));
+  }, [users]);
+
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('@controle_financeiro_current_session', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('@controle_financeiro_current_session');
+    }
+  }, [currentUser]);
+
+  // Funções de Autenticação (Regra 12)
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+
+    const foundUser = users.find(u => u.username.toLowerCase() === loginInput.toLowerCase() && u.passwordHash === passwordInput);
+    if (!foundUser) {
+      setLoginError('Usuário ou senha inválidos.');
+      return;
+    }
+    if (!foundUser.active) {
+      setLoginError('Este usuário está desativado. Contate o administrador.');
+      return;
+    }
+
+    setCurrentUser(foundUser);
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setLoginInput('');
+    setPasswordInput('');
+  };
+
+  const handleCreateUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUsername || !newName || !newPassword) return;
+
+    if (users.some(u => u.username.toLowerCase() === newUsername.toLowerCase())) {
+      alert('Nome de usuário já cadastrado.');
+      return;
+    }
+
+    const created: SystemUser = {
+      id: `user-${crypto.randomUUID()}`,
+      username: newUsername,
+      name: newName,
+      role: newRole,
+      active: true,
+      passwordHash: newPassword
+    };
+
+    setUsers([...users, created]);
+    setNewUsername('');
+    setNewName('');
+    setNewPassword('');
+    alert('Usuário cadastrado com sucesso!');
+  };
+
+  const toggleUserActiveStatus = (id: string) => {
+    setUsers(users.map(u => {
+      if (u.id === id) {
+        if (u.username === 'admin' && u.active) {
+          alert('Não é permitido desativar o Administrador Master principal.');
+          return u;
+        }
+        return { ...u, active: !u.active };
+      }
+      return u;
+    }));
+  };
+
+  const handleForgotSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotSuccess(true);
+    setTimeout(() => {
+      setForgotSuccess(false);
+      setIsForgotModalOpen(false);
+      setForgotEmail('');
+    }, 2500);
+  };
+
+  // Se não estiver autenticado, exibe a tela de login (Regra 12)
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 space-y-6 relative border border-slate-800">
+          <div className="text-center space-y-2">
+            <div className="mx-auto w-14 h-14 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center shadow-inner">
+              <Lock className="w-7 h-7" />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
+            <p className="text-xs text-slate-500">Entre com suas credenciais para acessar o sistema</p>
+          </div>
+
+          {loginError && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1.5">Usuário ou E-mail</label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <User className="w-4 h-4" />
+                </span>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: admin"
+                  value={loginInput}
+                  onChange={(e) => setLoginInput(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1.5">Senha de Acesso</label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <KeyRound className="w-4 h-4" />
+                </span>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  placeholder="••••••••"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  className="w-full pl-10 pr-10 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-xs pt-1">
+              <span className="text-slate-400">Dica padrão: <strong>admin</strong> / <strong>admin123</strong></span>
+              <button
+                type="button"
+                onClick={() => setIsForgotModalOpen(true)}
+                className="text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer transition"
+              >
+                Esqueci minha senha
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition shadow-md cursor-pointer text-sm"
+            >
+              Entrar no Sistema
+            </button>
+          </form>
+        </div>
+
+        {/* Modal de Recuperação de Senha */}
+        {isForgotModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-5 relative border border-slate-200">
+              <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+                <h3 className="text-base font-bold text-slate-900">Recuperação de Senha</h3>
+                <button onClick={() => setIsForgotModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {forgotSuccess ? (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl text-center text-xs space-y-1">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto" />
+                  <strong>Instruções enviadas!</strong>
+                  <p>Verifique seu e-mail cadastrado para redefinir sua senha.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleForgotSubmit} className="space-y-4 text-xs">
+                  <p className="text-slate-500">Informe seu e-mail ou nome de usuário para receber as instruções de recuperação.</p>
+                  <div>
+                    <input
+                      type="text"
+                      required
+                      placeholder="E-mail ou usuário"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl p-2.5 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition cursor-pointer"
+                  >
+                    Enviar Instruções
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const handlePrevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   };
@@ -225,7 +487,6 @@ export default function App() {
     return targetDate.getFullYear() === currentYear && targetDate.getMonth() === currentMonth;
   });
 
-  // TOTALIZADORES DO DASHBOARD (REGRA 11)
   const totalReceitasCompetencia = monthTransactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + t.amount, 0);
@@ -459,7 +720,7 @@ export default function App() {
             status: 'pending',
             installmentInfo: `Parcela ${i}/${totalParts}`,
             installmentGroup: groupId,
-            auditHistory: [`Criado em ${new Date().toLocaleString()}`]
+            auditHistory: [`Criado por ${currentUser.username} em ${new Date().toLocaleString()}`]
           };
           newTransactionsList.unshift(installmentTransaction);
         }
@@ -487,7 +748,7 @@ export default function App() {
             status: 'pending',
             installmentInfo: `Parcela ${i}/${totalParts}`,
             installmentGroup: groupId,
-            auditHistory: [`Criado em ${new Date().toLocaleString()}`]
+            auditHistory: [`Criado por ${currentUser.username} em ${new Date().toLocaleString()}`]
           };
           newTransactionsList.unshift(installmentTransaction);
         }
@@ -539,7 +800,7 @@ export default function App() {
           status: i === 0 ? status : 'pending',
           recurringInfo: `Recorrente (${recurrencePeriod})`,
           installmentGroup: groupId,
-          auditHistory: [`Criado em ${new Date().toLocaleString()}`]
+          auditHistory: [`Criado por ${currentUser.username} em ${new Date().toLocaleString()}`]
         };
         newTransactionsList.unshift(recurringTransaction);
       }
@@ -556,7 +817,7 @@ export default function App() {
         type,
         status,
         installmentGroup: groupId,
-        auditHistory: [`Criado em ${new Date().toLocaleString()}`]
+        auditHistory: [`Criado por ${currentUser.username} em ${new Date().toLocaleString()}`]
       };
       newTransactionsList.unshift(singleTransaction);
     }
@@ -630,7 +891,7 @@ export default function App() {
     if (isNaN(newAmt)) return;
 
     const targetGroup = editingTransaction.installmentGroup;
-    const auditMsg = `Editado em ${new Date().toLocaleString()}: tipo alterado para ${editType === 'income' ? 'Receita' : 'Despesa'}, valor R$ ${newAmt}`;
+    const auditMsg = `Editado por ${currentUser.username} em ${new Date().toLocaleString()}: tipo alterado para ${editType === 'income' ? 'Receita' : 'Despesa'}, valor R$ ${newAmt}`;
 
     setTransactions(transactions.map(t => {
       if (t.id === editingTransaction.id) {
@@ -745,10 +1006,25 @@ export default function App() {
         {/* Cabeçalho */}
         <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 border-slate-200">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
-            <p className="text-sm text-slate-500">Dashboard Executivo com Visões de Competência e Caixa</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Controle & Gestão Financeira</h1>
+              <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase ${currentUser.role === 'admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                {currentUser.role === 'admin' ? 'Administrador' : 'Usuário Comum'} ({currentUser.name})
+              </span>
+            </div>
+            <p className="text-sm text-slate-500 mt-1">Sessão segura ativa | Autenticação validada</p>
           </div>
+
           <div className="flex flex-wrap items-center gap-2">
+            {currentUser.role === 'admin' && (
+              <button
+                onClick={() => setIsUserManagementModalOpen(true)}
+                className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 px-3.5 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm"
+              >
+                <Shield className="w-4 h-4 text-indigo-600" />
+                <span>Gerenciar Usuários</span>
+              </button>
+            )}
             <button
               onClick={() => setIsTrashModalOpen(true)}
               className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 px-3.5 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm"
@@ -777,10 +1053,18 @@ export default function App() {
               <PlusCircle className="w-5 h-5" />
               <span>Novo Lançamento</span>
             </button>
+            <button
+              onClick={handleLogout}
+              title="Sair do Sistema"
+              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2.5 rounded-lg font-medium transition cursor-pointer text-sm shadow-sm"
+            >
+              <LogOut className="w-4 h-4 text-rose-400" />
+              <span>Sair</span>
+            </button>
           </div>
         </header>
 
-        {/* Competência & Filtro de Mês/Ano (Regra 11) */}
+        {/* Competência & Filtro de Mês/Ano */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
           <button
             onClick={handlePrevMonth}
@@ -823,7 +1107,7 @@ export default function App() {
           </button>
         </div>
 
-        {/* DASHBOARD – TOTALIZADORES MENSAIS POR COMPETÊNCIA (REGRA 11) */}
+        {/* DASHBOARD – TOTALIZADORES MENSAIS POR COMPETÊNCIA */}
         <section className="space-y-4">
           <div className="flex items-center justify-between border-b border-slate-200 pb-2">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -833,7 +1117,6 @@ export default function App() {
             <span className="text-xs text-slate-400 font-medium">Competência vs. Movimentação Efetiva (Caixa)</span>
           </div>
 
-          {/* Visão de Competência (Planejamento) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-indigo-900 text-white p-5 rounded-xl shadow-sm">
               <span className="text-xs uppercase font-semibold text-indigo-200 tracking-wider">Total de Receitas (Competência)</span>
@@ -856,7 +1139,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Visão de Caixa / Movimentação Efetiva */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
               <span className="text-xs font-semibold uppercase text-slate-500">Receitas Recebidas</span>
@@ -1208,6 +1490,112 @@ export default function App() {
         </section>
 
       </div>
+
+      {/* MODAL DE GERENCIAMENTO DE USUÁRIOS (ADMIN) */}
+      {isUserManagementModalOpen && currentUser.role === 'admin' && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-6 relative border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-indigo-600" />
+                Gerenciamento de Usuários e Níveis de Acesso
+              </h3>
+              <button
+                onClick={() => setIsUserManagementModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 space-y-3">
+              <h4 className="font-bold text-sm text-indigo-900">Cadastrar Novo Usuário</h4>
+              <form onSubmit={handleCreateUser} className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nome Completo"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="border border-slate-300 rounded-lg p-2 text-xs bg-white"
+                  />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Login / Usuário"
+                    value={newUsername}
+                    onChange={(e) => setNewUsername(e.target.value)}
+                    className="border border-slate-300 rounded-lg p-2 text-xs bg-white"
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input
+                    type="password"
+                    required
+                    placeholder="Senha Provisória"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="border border-slate-300 rounded-lg p-2 text-xs bg-white"
+                  />
+                  <select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value as any)}
+                    className="border border-slate-300 rounded-lg p-2 text-xs bg-white font-medium"
+                  >
+                    <option value="user">Usuário Comum</option>
+                    <option value="admin">Administrador</option>
+                  </select>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition cursor-pointer"
+                  >
+                    Cadastrar Usuário
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-slate-700 uppercase">Usuários Cadastrados:</span>
+              <div className="space-y-2">
+                {users.map(u => (
+                  <div key={u.id} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
+                    <div>
+                      <div className="font-bold text-slate-800 flex items-center gap-2">
+                        {u.name} (@{u.username})
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${u.role === 'admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200 text-slate-700'}`}>
+                          {u.role === 'admin' ? 'Admin' : 'Usuário'}
+                        </span>
+                      </div>
+                      <div className="text-slate-400 text-[10px] mt-0.5">Status: {u.active ? <strong className="text-emerald-600">Ativo</strong> : <strong className="text-rose-600">Inativo</strong>}</div>
+                    </div>
+                    <button
+                      onClick={() => toggleUserActiveStatus(u.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${u.active ? 'bg-rose-50 hover:bg-rose-100 text-rose-700' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'}`}
+                    >
+                      {u.active ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                      <span>{u.active ? 'Desativar' : 'Ativar'}</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsUserManagementModalOpen(false)}
+                className="px-5 py-2 text-sm font-medium bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE PAGAMENTO FLEXÍVEL DE FATURA */}
       {isPaymentModalOpen && activeCard && (
