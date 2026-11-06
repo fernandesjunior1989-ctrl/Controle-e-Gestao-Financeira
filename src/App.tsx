@@ -106,6 +106,10 @@ export default function App() {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   });
 
+  // ANOS DINÂMICOS AUTOMÁTICOS (2 anos anteriores até 15 anos à frente)
+  const currentSystemYear = new Date().getFullYear();
+  const availableYears = Array.from({ length: 18 }, (_, i) => (currentSystemYear - 2) + i);
+
   const [creditCards, setCreditCards] = useState<CreditCardAccount[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_credit_cards');
     if (saved) {
@@ -1343,7 +1347,7 @@ export default function App() {
                           onChange={handleYearChange}
                           className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
                         >
-                          {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                          {availableYears.map(y => (
                             <option key={y} value={y}>{y}</option>
                           ))}
                         </select>
@@ -1356,7 +1360,7 @@ export default function App() {
                         onChange={handleYearChange}
                         className="border border-slate-300 rounded-lg text-xs p-2 bg-slate-50 font-bold text-indigo-900 cursor-pointer"
                       >
-                        {[2024, 2025, 2026, 2027, 2028, 2029, 2030,2031,2032,2033,2034,2035,2036,2037,2038,2039,2040].map(y => (
+                        {availableYears.map(y => (
                           <option key={y} value={y}>{y}</option>
                         ))}
                       </select>
