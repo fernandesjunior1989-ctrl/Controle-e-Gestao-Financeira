@@ -150,7 +150,7 @@ export default function App() {
     return { 'Alimentação': 1000, 'Habitação': 2000, 'Transporte': 600 };
   });
 
-  const [accounts, setAccounts] = useState<string[]>(() => {
+  const [accounts] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_accounts');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
