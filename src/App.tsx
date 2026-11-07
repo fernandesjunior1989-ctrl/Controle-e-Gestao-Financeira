@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
-  PlusCircle, Trash2, X, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, RotateCcw, Lock, User, KeyRound, Sparkles, Calendar, Filter
+  PlusCircle, Trash2, X, AlertTriangle, CheckCircle2, RotateCcw, Lock, User, KeyRound, Filter
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -82,13 +82,12 @@ export default function App() {
 
   const [loginInput, setLoginInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState(false);
 
-  // NOVO FILTRO POR PERÍODO DE DATAS (Data Inicial e Data Final)
+  // FILTRO POR PERÍODO DE DATAS (Data Inicial e Data Final)
   const [filterStartDate, setFilterStartDate] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
@@ -99,7 +98,7 @@ export default function App() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   });
 
-  const [creditCards, setCreditCards] = useState<CreditCardAccount[]>(() => {
+  const [creditCards] = useState<CreditCardAccount[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_credit_cards');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -133,7 +132,7 @@ export default function App() {
     return [];
   });
 
-  const [categories, setCategories] = useState<string[]>(() => {
+  const [categories] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_categories');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -149,7 +148,7 @@ export default function App() {
     return { 'Alimentação': 1000, 'Habitação': 2000, 'Transporte': 600 };
   });
 
-  const [accounts, setAccounts] = useState<string[]>(() => {
+  const [accounts] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_accounts');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -364,7 +363,6 @@ export default function App() {
   const activeTransactions = transactions.filter(t => !t.deletedAt);
   const trashedTransactions = transactions.filter(t => t.deletedAt);
 
-  // FUNÇÕES DE AÇÃO EM LOTE NA LIXEIRA
   const handleSelectAllTrash = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
       setSelectedTrashIds(trashedTransactions.map(t => t.id));
@@ -416,7 +414,6 @@ export default function App() {
     setTimeout(() => setDuplicateMessage(null), 4000);
   };
 
-  // PROJEÇÃO DE RECORRÊNCIAS AJUSTADA AO INTERVALO DE DATAS
   const getExpandedTransactions = () => {
     const result: Transaction[] = [];
     const startYear = filterStartDate ? new Date(filterStartDate + 'T00:00:00').getFullYear() : new Date().getFullYear();
@@ -431,7 +428,6 @@ export default function App() {
         const origMonth = origDate.getMonth();
         const origDay = origDate.getDate();
 
-        // Gerar instâncias para cada mês dentro ou próximo ao intervalo selecionado
         for (let y = startYear; y <= endYear; y++) {
           const mStart = (y === startYear) ? startMonth : 0;
           const mEnd = (y === endYear) ? endMonth : 11;
@@ -468,7 +464,6 @@ export default function App() {
 
   const expandedActiveTransactions = getExpandedTransactions();
 
-  // FILTRAGEM POR PERÍODO DE DATA ESCOLHIDO
   const periodTransactions = expandedActiveTransactions.filter(t => {
     const itemDate = t.dueDate || t.date;
     if (filterStartDate && itemDate < filterStartDate) return false;
@@ -601,11 +596,10 @@ export default function App() {
             <p className="text-xs text-slate-500">Logado como: <strong>{currentUser.name}</strong> ({currentUser.username})</p>
           </div>
           <button onClick={handleLogout} className="flex items-center gap-1.5 text-xs text-rose-600 hover:text-rose-800 font-semibold cursor-pointer border border-rose-200 px-3 py-1.5 rounded-lg transition">
-            <span className="w-4 h-4 flex items-center justify-center">🚪</span> Sair
+            Sair
           </button>
         </div>
 
-        {/* Bloco da Lixeira com botões em lote integrados */}
         {isTrashModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 border border-slate-200 text-xs">
@@ -673,7 +667,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Modal de Confirmação para Exclusão Definitiva em Lote */}
         {isBatchPermanentModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4 border border-slate-200 text-xs z-50">
@@ -697,7 +690,6 @@ export default function App() {
           </div>
         )}
 
-        {/* NOVO FILTRO POR PERÍODO DE DATA (Data Inicial e Data Final) */}
         <div className="bg-slate-100 p-4 rounded-xl space-y-3">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase">
             <Filter className="w-4 h-4 text-indigo-600" /> Filtrar por Período de Data
