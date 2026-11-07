@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
-  PlusCircle, Trash2, X, Save, 
-  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, KeyRound, Menu, ArrowDownRight, Tag, PanelLeftClose, PanelLeftOpen, Calendar, Sparkles, Filter
+  PlusCircle, Trash2, X, CreditCard, LogOut, Lock, User, Eye, EyeOff, KeyRound, ArrowRightLeft, BarChart3, ArrowDownRight
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -101,7 +100,7 @@ export default function App() {
     return new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
   });
 
-  const [creditCards, setCreditCards] = useState<CreditCardAccount[]>(() => {
+  const [creditCards] = useState<CreditCardAccount[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_credit_cards');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -135,7 +134,7 @@ export default function App() {
     return [];
   });
 
-  const [categories, setCategories] = useState<string[]>(() => {
+  const [categories] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_categories');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -163,17 +162,15 @@ export default function App() {
 
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Outros');
-  const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
+  const [paymentSource] = useState<string>('acc-Banco do Brasil');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const [launchMode, setLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
-  const [installmentModeType, setInstallmentModeType] = useState<'divide' | 'repeat'>('divide');
-  const [installmentsCount, setInstallmentsCount] = useState('12');
+  const [launchMode] = useState<'single' | 'installment' | 'recurring'>('single');
+  const [installmentModeType] = useState<'divide' | 'repeat'>('divide');
+  const [installmentsCount] = useState('12');
   const [recurrencePeriod] = useState<string>('Mensal');
-
-  const [selectedCardView] = useState<string>(creditCards[0]?.id || '');
 
   const formatCurrency = (val: number): string => {
     return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -269,7 +266,7 @@ export default function App() {
 
           {loginError && (
             <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+              <span className="text-rose-600 font-bold">!</span>
               <span>{loginError}</span>
             </div>
           )}
@@ -348,7 +345,6 @@ export default function App() {
 
               {forgotSuccess ? (
                 <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl text-center text-xs space-y-1">
-                  <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto" />
                   <strong>Instruções enviadas!</strong>
                   <p>Verifique seu e-mail cadastrado para redefinir sua senha.</p>
                 </div>
@@ -680,7 +676,7 @@ export default function App() {
                 <h3 className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(totalEntradasMes)}</h3>
               </div>
               <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
-                <TrendUp className="w-6 h-6" />
+                <ArrowRightLeft className="w-6 h-6 rotate-45" />
               </div>
             </div>
 
@@ -700,7 +696,7 @@ export default function App() {
                 <h3 className={`text-xl font-bold mt-1 ${saldoMes >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>{formatCurrency(saldoMes)}</h3>
               </div>
               <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
-                <DollarSign className="w-6 h-6" />
+                <BarChart3 className="w-6 h-6" />
               </div>
             </div>
           </div>
