@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
-  PlusCircle, Trash2, X, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, RotateCcw, Lock, User, KeyRound, Sparkles, Calendar, Filter
+  PlusCircle, Trash2, X, Save, 
+  AlertTriangle, CheckCircle2, Clock, Building2, CreditCard, Settings, ChevronLeft, ChevronRight, Target, TrendingUp as TrendUp, Download, Trash, RotateCcw, CheckSquare, Square, Edit3, DollarSign, ArrowRightLeft, BarChart3, Lock, User, Eye, EyeOff, LogOut, KeyRound, Menu, ArrowDownRight, Tag, PanelLeftClose, PanelLeftOpen, Calendar, Sparkles, Filter
 } from 'lucide-react';
 
 interface CreditCardAccount {
@@ -88,16 +89,22 @@ export default function App() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState(false);
 
-  // NOVO FILTRO POR PERÍODO DE DATAS (Data Inicial e Data Final)
-  const [filterStartDate, setFilterStartDate] = useState(() => {
+  const [currentModule, setCurrentModule] = useState<'transactions' | 'accounts' | 'cards' | 'payables' | 'receivables' | 'cashflow' | 'budget' | 'reports' | 'settings'>('transactions');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // ESTADOS DO FILTRO DE PERÍODO
+  const [periodFilterMode, setPeriodFilterMode] = useState<'month' | 'day' | 'year' | 'custom'>('month');
+  const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   });
-  const [filterEndDate, setFilterEndDate] = useState(() => {
-    const now = new Date();
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-  });
+
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+
+  const currentSystemYear = new Date().getFullYear();
+  const availableYears = Array.from({ length: 18 }, (_, i) => (currentSystemYear - 2) + i);
 
   const [creditCards, setCreditCards] = useState<CreditCardAccount[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_credit_cards');
@@ -157,27 +164,76 @@ export default function App() {
     return ['Banco do Brasil', 'Bradesco', 'Carteira'];
   });
 
+  // MODAIS DE EDIÇÃO DE CONTAS E CARTÕES
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [editingAccountOldName, setEditingAccountOldName] = useState<string | null>(null);
+  const [accountNameInput, setAccountNameInput] = useState('');
+
+  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+  const [editingCard, setEditingCard] = useState<CreditCardAccount | null>(null);
+  const [cardNameInput, setCardNameInput] = useState('');
+  const [cardBankInput, setCardBankInput] = useState('');
+  const [cardLimitInput, setCardLimitInput] = useState('');
+  const [cardClosingInput, setCardClosingInput] = useState('10');
+  const [cardDueInput, setCardDueInput] = useState('17');
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [duplicateMessage, setDuplicateMessage] = useState<string | null>(null);
 
+  // ESTADOS DE EDIÇÃO DE LANÇAMENTO
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editScope, setEditScope] = useState<'single' | 'forward' | 'all'>('single');
+  const [editDescription, setEditDescription] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editType, setEditType] = useState<'income' | 'expense'>('expense');
+  
+  const [editLaunchMode, setEditLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
+  const [editInstallmentModeType, setEditInstallmentModeType] = useState<'divide' | 'repeat'>('divide');
+  const [editInstallmentsCount, setEditInstallmentsCount] = useState('12');
+  const [editRecurrencePeriod, setEditRecurrencePeriod] = useState<string>('Mensal');
+  const [editRecurrenceEndType, setEditRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
+  const [editRecurrenceEndDate, setEditRecurrenceEndDate] = useState('');
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
+  const [deleteOption, setDeleteOption] = useState<'single' | 'forward' | 'all'>('single');
+
+  const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
+
   // ESTADOS DA LIXEIRA
   const [selectedTrashIds, setSelectedTrashIds] = useState<string[]>([]);
+  const [isPermanentDeleteModalOpen, setIsPermanentDeleteModalOpen] = useState(false);
+  const [permanentIdToDelete, setPermanentIdToDelete] = useState<string | null>(null);
   const [isBatchPermanentModalOpen, setIsBatchPermanentModalOpen] = useState(false);
 
   const [description, setDescription] = useState('');
-  const [category] = useState(categories[0] || 'Outros');
-  const [paymentSource] = useState<string>('acc-Banco do Brasil');
+  const [category, setCategory] = useState(categories[0] || 'Outros');
+  const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [status] = useState<'paid' | 'pending'>('pending');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [launchMode, setLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
-  const [installmentModeType] = useState<'divide' | 'repeat'>('divide');
-  const [installmentsCount] = useState('12');
+  const [installmentModeType, setInstallmentModeType] = useState<'divide' | 'repeat'>('divide');
+  const [installmentsCount, setInstallmentsCount] = useState('12');
 
-  const [recurrencePeriod] = useState<string>('Mensal');
+  const [recurrencePeriod, setRecurrencePeriod] = useState<string>('Mensal');
+  const [recurrenceEndType, setRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
+
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedCardView, setSelectedCardView] = useState<string>(creditCards[0]?.id || '');
+
+  const formatCurrency = (val: number): string => {
+    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  };
 
   const parseFormattedNumber = (valStr: string): number => {
     if (!valStr) return 0;
@@ -236,6 +292,7 @@ export default function App() {
     }
 
     setCurrentUser(foundUser);
+    setCurrentModule('transactions');
   };
 
   const handleLogout = () => {
@@ -298,14 +355,32 @@ export default function App() {
                   <KeyRound className="w-4 h-4" />
                 </span>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   placeholder="••••••••"
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
                   className="w-full pl-10 pr-10 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between text-xs pt-1">
+              <span className="text-slate-400">Dica padrão: <strong>admin</strong> / <strong>admin123</strong></span>
+              <button
+                type="button"
+                onClick={() => setIsForgotModalOpen(true)}
+                className="text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer transition"
+              >
+                Esqueci minha senha
+              </button>
             </div>
 
             <button
@@ -360,6 +435,119 @@ export default function App() {
       </div>
     );
   }
+
+  // FUNÇÕES DE EDIÇÃO DE CONTAS E CARTÕES
+  const openEditAccountModal = (accName: string) => {
+    setEditingAccountOldName(accName);
+    setAccountNameInput(accName);
+    setIsAccountModalOpen(true);
+  };
+
+  const handleSaveAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accountNameInput.trim() || !editingAccountOldName) return;
+
+    const trimmedNew = accountNameInput.trim();
+    setAccounts(accounts.map(a => a === editingAccountOldName ? trimmedNew : a));
+    
+    // Atualizar nas transações associadas
+    setTransactions(transactions.map(t => {
+      if (t.account === editingAccountOldName) {
+        return { ...t, account: trimmedNew };
+      }
+      return t;
+    }));
+
+    setIsAccountModalOpen(false);
+    setEditingAccountOldName(null);
+    setAccountNameInput('');
+  };
+
+  const openEditCardModal = (card: CreditCardAccount) => {
+    setEditingCard(card);
+    setCardNameInput(card.name);
+    setCardBankInput(card.bank);
+    setCardLimitInput(card.totalLimit.toString());
+    setCardClosingInput(card.closingDay.toString());
+    setCardDueInput(card.dueDay.toString());
+    setIsCardModalOpen(true);
+  };
+
+  const handleSaveCard = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCard || !cardNameInput.trim()) return;
+
+    const limitVal = parseFormattedNumber(cardLimitInput);
+    const closingVal = parseInt(cardClosingInput) || 10;
+    const dueVal = parseInt(cardDueInput) || 17;
+
+    const updatedCard: CreditCardAccount = {
+      ...editingCard,
+      name: cardNameInput.trim(),
+      bank: cardBankInput.trim() || editingCard.bank,
+      totalLimit: limitVal,
+      closingDay: closingVal,
+      dueDay: dueVal
+    };
+
+    setCreditCards(creditCards.map(c => c.id === updatedCard.id ? updatedCard : c));
+    setIsCardModalOpen(false);
+    setEditingCard(null);
+  };
+
+  // NAVEGAÇÃO TEMPORAL
+  const handlePrevPeriod = () => {
+    const d = new Date(currentDate);
+    if (periodFilterMode === 'day') {
+      d.setDate(d.getDate() - 1);
+    } else if (periodFilterMode === 'month') {
+      d.setMonth(d.getMonth() - 1);
+    } else {
+      d.setFullYear(d.getFullYear() - 1);
+    }
+    setCurrentDate(d);
+  };
+
+  const handleNextPeriod = () => {
+    const d = new Date(currentDate);
+    if (periodFilterMode === 'day') {
+      d.setDate(d.getDate() + 1);
+    } else if (periodFilterMode === 'month') {
+      d.setMonth(d.getMonth() + 1);
+    } else {
+      d.setFullYear(d.getFullYear() + 1);
+    }
+    setCurrentDate(d);
+  };
+
+  const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newYear = parseInt(e.target.value);
+    const d = new Date(currentDate);
+    d.setFullYear(newYear);
+    setCurrentDate(d);
+  };
+
+  const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newMonth = parseInt(e.target.value);
+    const d = new Date(currentDate);
+    d.setMonth(newMonth);
+    setCurrentDate(d);
+  };
+
+  const handleDayChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.value) return;
+    const [y, m, d] = e.target.value.split('-').map(Number);
+    setCurrentDate(new Date(y, m - 1, d));
+  };
+
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
+  const currentDay = currentDate.getDate();
+  const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+  const dayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`;
+
+  const monthName = currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+  const dayFormattedName = currentDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const activeTransactions = transactions.filter(t => !t.deletedAt);
   const trashedTransactions = transactions.filter(t => t.deletedAt);
@@ -416,13 +604,10 @@ export default function App() {
     setTimeout(() => setDuplicateMessage(null), 4000);
   };
 
-  // PROJEÇÃO DE RECORRÊNCIAS AJUSTADA AO INTERVALO DE DATAS
   const getExpandedTransactions = () => {
     const result: Transaction[] = [];
-    const startYear = filterStartDate ? new Date(filterStartDate + 'T00:00:00').getFullYear() : new Date().getFullYear();
-    const startMonth = filterStartDate ? new Date(filterStartDate + 'T00:00:00').getMonth() : 0;
-    const endYear = filterEndDate ? new Date(filterEndDate + 'T00:00:00').getFullYear() : startYear;
-    const endMonth = filterEndDate ? new Date(filterEndDate + 'T00:00:00').getMonth() : 11;
+    const viewedYear = currentYear;
+    const viewedMonth = currentMonth;
 
     activeTransactions.forEach(t => {
       if (t.recurringInfo && t.recurringInfo.includes('Mensal') && !t.installmentGroup) {
@@ -431,34 +616,26 @@ export default function App() {
         const origMonth = origDate.getMonth();
         const origDay = origDate.getDate();
 
-        // Gerar instâncias para cada mês dentro ou próximo ao intervalo selecionado
-        for (let y = startYear; y <= endYear; y++) {
-          const mStart = (y === startYear) ? startMonth : 0;
-          const mEnd = (y === endYear) ? endMonth : 11;
+        const diffMonths = (viewedYear - origYear) * 12 + (viewedMonth - origMonth);
+        if (diffMonths >= 0) {
+          const targetDateObj = new Date(viewedYear, viewedMonth, Math.min(origDay, 28));
+          const targetDateStr = targetDateObj.toISOString().split('T')[0];
 
-          for (let m = mStart; m <= mEnd; m++) {
-            const diffMonths = (y - origYear) * 12 + (m - origMonth);
-            if (diffMonths >= 0) {
-              const targetDateObj = new Date(y, m, Math.min(origDay, 28));
-              const targetDateStr = targetDateObj.toISOString().split('T')[0];
+          const existsReal = activeTransactions.some(sub => 
+            sub.installmentGroup === t.installmentGroup && 
+            sub.dueDate?.startsWith(`${viewedYear}-${String(viewedMonth + 1).padStart(2, '0')}`)
+          );
 
-              const existsReal = activeTransactions.some(sub => 
-                sub.installmentGroup === t.installmentGroup && 
-                sub.dueDate?.startsWith(`${y}-${String(m + 1).padStart(2, '0')}`)
-              );
-
-              if (!existsReal || diffMonths === 0) {
-                result.push({
-                  ...t,
-                  id: diffMonths === 0 ? t.id : `${t.id}-rec-${y}-${m}`,
-                  dueDate: targetDateStr,
-                  date: targetDateStr
-                });
-              }
-            }
+          if (!existsReal || diffMonths === 0) {
+            result.push({
+              ...t,
+              id: diffMonths === 0 ? t.id : `${t.id}-rec-${viewedYear}-${viewedMonth}`,
+              dueDate: targetDateStr,
+              date: targetDateStr
+            });
+            return;
           }
         }
-        return;
       }
       result.push(t);
     });
@@ -468,13 +645,138 @@ export default function App() {
 
   const expandedActiveTransactions = getExpandedTransactions();
 
-  // FILTRAGEM POR PERÍODO DE DATA ESCOLHIDO
   const periodTransactions = expandedActiveTransactions.filter(t => {
     const itemDate = t.dueDate || t.date;
-    if (filterStartDate && itemDate < filterStartDate) return false;
-    if (filterEndDate && itemDate > filterEndDate) return false;
-    return true;
+    if (periodFilterMode === 'custom') {
+      if (customStartDate && itemDate < customStartDate) return false;
+      if (customEndDate && itemDate > customEndDate) return false;
+      return true;
+    }
+
+    const targetDate = new Date(itemDate + 'T00:00:00');
+    if (periodFilterMode === 'day') {
+      return (
+        targetDate.getFullYear() === currentYear &&
+        targetDate.getMonth() === currentMonth &&
+        targetDate.getDate() === currentDay
+      );
+    } else if (periodFilterMode === 'month') {
+      return (
+        targetDate.getFullYear() === currentYear &&
+        targetDate.getMonth() === currentMonth
+      );
+    } else {
+      return targetDate.getFullYear() === currentYear;
+    }
   });
+
+  const totalEntradasMes = periodTransactions
+    .filter(t => t.type === 'income')
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  const totalSaidasMes = periodTransactions
+    .filter(t => t.type === 'expense')
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  const saldoMes = totalEntradasMes - totalSaidasMes;
+
+  const cashFlowProjections = Array.from({ length: 6 }, (_, index) => {
+    const projDate = new Date(currentYear, currentMonth + index, 1);
+    const pYear = projDate.getFullYear();
+    const pMonth = projDate.getMonth();
+    const pName = projDate.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+
+    const pTxs = expandedActiveTransactions.filter(t => {
+      const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
+      return targetDate.getFullYear() === pYear && targetDate.getMonth() === pMonth;
+    });
+
+    const pIncome = pTxs.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+    const pExpense = pTxs.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+    const pBalance = pIncome - pExpense;
+
+    return { name: pName, income: pIncome, expense: pExpense, balance: pBalance };
+  });
+
+  const getBroughtForwardBalance = (cardId: string, targetYear: number, targetMonth: number) => {
+    let prevYear = targetYear;
+    let prevMonth = targetMonth - 1;
+    if (prevMonth < 0) {
+      prevMonth = 11;
+      prevYear -= 1;
+    }
+    const prevMonthKey = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}`;
+
+    const prevTxs = expandedActiveTransactions.filter(t => {
+      if (t.creditCardId !== cardId) return false;
+      const d = new Date((t.dueDate || t.date) + 'T00:00:00');
+      return d.getFullYear() === prevYear && d.getMonth() === prevMonth;
+    });
+    const prevTotal = prevTxs.reduce((acc, t) => acc + t.amount, 0);
+    const prevPayments = invoicePayments
+      .filter(p => p.cardId === cardId && p.monthKey === prevMonthKey)
+      .reduce((acc, p) => acc + p.amountPaid, 0);
+
+    const diff = prevTotal - prevPayments;
+    return diff > 0 ? diff : 0;
+  };
+
+  const activeCard = creditCards.find(c => c.id === selectedCardView) || creditCards[0];
+  const broughtForward = activeCard ? getBroughtForwardBalance(activeCard.id, currentYear, currentMonth) : 0;
+
+  const getCardLimitDetails = (cardId: string) => {
+    const card = creditCards.find(c => c.id === cardId);
+    if (!card) return { total: 0, used: 0, available: 0 };
+    
+    const used = expandedActiveTransactions
+      .filter(t => t.creditCardId === cardId && t.status === 'pending')
+      .reduce((acc, t) => acc + t.amount, 0);
+
+    return {
+      total: card.totalLimit,
+      used: used + broughtForward,
+      available: card.totalLimit - (used + broughtForward)
+    };
+  };
+
+  const activeCardLimit = activeCard ? getCardLimitDetails(activeCard.id) : null;
+  const activeCardMonthTransactions = activeCard 
+    ? periodTransactions.filter(t => t.creditCardId === activeCard.id) 
+    : [];
+
+  const invoiceMonthTotal = activeCardMonthTransactions.reduce((acc, t) => acc + t.amount, 0) + broughtForward;
+  const cardPaymentsThisMonth = activeCard ? invoicePayments.filter(p => p.cardId === activeCard.id && p.monthKey === monthKey) : [];
+  const totalPaidThisMonth = cardPaymentsThisMonth.reduce((acc, p) => acc + p.amountPaid, 0);
+  const totalFeesThisMonth = cardPaymentsThisMonth.reduce((acc, p) => acc + p.interestAndFees, 0);
+  const pendingInvoiceMonthTotal = Math.max(0, (invoiceMonthTotal + totalFeesThisMonth) - totalPaidThisMonth);
+
+  const invoiceStatus = pendingInvoiceMonthTotal === 0 
+    ? 'Paga' 
+    : totalPaidThisMonth > 0 
+    ? 'Parcialmente Paga' 
+    : 'Aberta';
+
+  const exportToCSV = () => {
+    const headers = ["Status", "Descricao", "Conta/Cartao", "Categoria", "Vencimento", "Tipo", "Valor"];
+    const rows = periodTransactions.map(t => [
+      t.status === 'paid' ? 'Pago' : 'Pendente',
+      `"${t.description}"`,
+      `"${t.account}"`,
+      `"${t.category}"`,
+      t.dueDate || t.date,
+      t.type === 'income' ? 'Receita' : 'Despesa',
+      t.amount.toFixed(2).replace('.', ',')
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(";"), ...rows.map(e => e.join(";"))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `extrato_filtrado.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const calculateInvoiceDueDate = (purchaseDateStr: string, card: CreditCardAccount, monthOffset: number = 0) => {
     const dateObj = new Date(purchaseDateStr + 'T00:00:00');
@@ -601,7 +903,7 @@ export default function App() {
             <p className="text-xs text-slate-500">Logado como: <strong>{currentUser.name}</strong> ({currentUser.username})</p>
           </div>
           <button onClick={handleLogout} className="flex items-center gap-1.5 text-xs text-rose-600 hover:text-rose-800 font-semibold cursor-pointer border border-rose-200 px-3 py-1.5 rounded-lg transition">
-            <span className="w-4 h-4 flex items-center justify-center">🚪</span> Sair
+            <LogOut className="w-4 h-4" /> Sair
           </button>
         </div>
 
@@ -661,7 +963,7 @@ export default function App() {
                           />
                           <div>
                             <p className="font-bold text-slate-800">{t.description}</p>
-                            <p className="text-slate-500">Valor: R$ {t.amount.toFixed(2)} | Vencimento: {t.dueDate || t.date}</p>
+                            <p className="text-slate-500">Valor: {formatCurrency(t.amount)} | Vencimento: {t.dueDate || t.date}</p>
                           </div>
                         </div>
                       </div>
@@ -697,33 +999,14 @@ export default function App() {
           </div>
         )}
 
-        {/* NOVO FILTRO POR PERÍODO DE DATA (Data Inicial e Data Final) */}
-        <div className="bg-slate-100 p-4 rounded-xl space-y-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase">
-            <Filter className="w-4 h-4 text-indigo-600" /> Filtrar por Período de Data
+        <div className="flex justify-between items-center bg-slate-100 p-4 rounded-xl">
+          <div>
+            <p className="text-xs text-slate-500 font-semibold uppercase">Mês Atual Selecionado</p>
+            <p className="text-lg font-bold text-slate-900 capitalize">{monthName}</p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[10px] font-semibold uppercase text-slate-500 mb-1">Data Inicial</label>
-              <input 
-                type="date" 
-                value={filterStartDate} 
-                onChange={(e) => setFilterStartDate(e.target.value)} 
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs focus:ring-2 focus:ring-indigo-500" 
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold uppercase text-slate-500 mb-1">Data Final</label>
-              <input 
-                type="date" 
-                value={filterEndDate} 
-                onChange={(e) => setFilterEndDate(e.target.value)} 
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs focus:ring-2 focus:ring-indigo-500" 
-              />
-            </div>
-          </div>
-          <div className="text-[11px] text-slate-500 text-right">
-            Lançamentos encontrados no período: <strong>{periodTransactions.length}</strong>
+          <div className="flex gap-2">
+            <button onClick={handlePrevPeriod} className="p-2 bg-white rounded-lg shadow-sm hover:bg-slate-50 border border-slate-200 cursor-pointer"><ChevronLeft className="w-4 h-4" /></button>
+            <button onClick={handleNextPeriod} className="p-2 bg-white rounded-lg shadow-sm hover:bg-slate-50 border border-slate-200 cursor-pointer"><ChevronRight className="w-4 h-4" /></button>
           </div>
         </div>
 
@@ -743,7 +1026,7 @@ export default function App() {
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-center text-xs">
             {duplicateMessage}
           </div>
-        )}
+        </div>
       </div>
 
       {isModalOpen && (
