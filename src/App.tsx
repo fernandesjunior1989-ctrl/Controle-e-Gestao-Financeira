@@ -87,6 +87,10 @@ export default function App() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState(false);
 
+  const [currentModule, setCurrentModule] = useState<'transactions' | 'accounts' | 'cards' | 'payables' | 'receivables' | 'cashflow' | 'budget' | 'reports' | 'settings'>('transactions');
+  const [, setIsMobileMenuOpen] = useState(false);
+  const [, setIsSidebarCollapsed] = useState(false);
+
   // FILTRO POR PERÍODO DE DATAS (Data Inicial e Data Final)
   const [filterStartDate, setFilterStartDate] = useState(() => {
     const now = new Date();
@@ -98,7 +102,7 @@ export default function App() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   });
 
-  const [creditCards] = useState<CreditCardAccount[]>(() => {
+  const [creditCards, setCreditCards] = useState<CreditCardAccount[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_credit_cards');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -148,7 +152,7 @@ export default function App() {
     return { 'Alimentação': 1000, 'Habitação': 2000, 'Transporte': 600 };
   });
 
-  const [accounts] = useState<string[]>(() => {
+  const [accounts, setAccounts] = useState<string[]>(() => {
     const saved = localStorage.getItem('@controle_financeiro_accounts');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
@@ -156,27 +160,76 @@ export default function App() {
     return ['Banco do Brasil', 'Bradesco', 'Carteira'];
   });
 
+  // MODAIS DE EDIÇÃO DE CONTAS E CARTÕES
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [editingAccountOldName, setEditingAccountOldName] = useState<string | null>(null);
+  const [accountNameInput, setAccountNameInput] = useState('');
+
+  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+  const [editingCard, setEditingCard] = useState<CreditCardAccount | null>(null);
+  const [cardNameInput, setCardNameInput] = useState('');
+  const [cardBankInput, setCardBankInput] = useState('');
+  const [cardLimitInput, setCardLimitInput] = useState('');
+  const [cardClosingInput, setCardClosingInput] = useState('10');
+  const [cardDueInput, setCardDueInput] = useState('17');
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [duplicateMessage, setDuplicateMessage] = useState<string | null>(null);
 
+  // ESTADOS DE EDIÇÃO DE LANÇAMENTO
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editScope, setEditScope] = useState<'single' | 'forward' | 'all'>('single');
+  const [editDescription, setEditDescription] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editType, setEditType] = useState<'income' | 'expense'>('expense');
+  
+  const [editLaunchMode, setEditLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
+  const [editInstallmentModeType, setEditInstallmentModeType] = useState<'divide' | 'repeat'>('divide');
+  const [editInstallmentsCount, setEditInstallmentsCount] = useState('12');
+  const [editRecurrencePeriod, setEditRecurrencePeriod] = useState<string>('Mensal');
+  const [editRecurrenceEndType, setEditRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
+  const [editRecurrenceEndDate, setEditRecurrenceEndDate] = useState('');
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
+  const [deleteOption, setDeleteOption] = useState<'single' | 'forward' | 'all'>('single');
+
+  const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
+
   // ESTADOS DA LIXEIRA
   const [selectedTrashIds, setSelectedTrashIds] = useState<string[]>([]);
+  const [isPermanentDeleteModalOpen, setIsPermanentDeleteModalOpen] = useState(false);
+  const [permanentIdToDelete, setPermanentIdToDelete] = useState<string | null>(null);
   const [isBatchPermanentModalOpen, setIsBatchPermanentModalOpen] = useState(false);
 
   const [description, setDescription] = useState('');
-  const [category] = useState(categories[0] || 'Outros');
-  const [paymentSource] = useState<string>('acc-Banco do Brasil');
+  const [category, setCategory] = useState(categories[0] || 'Outros');
+  const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [status] = useState<'paid' | 'pending'>('pending');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [launchMode, setLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
-  const [installmentModeType] = useState<'divide' | 'repeat'>('divide');
-  const [installmentsCount] = useState('12');
+  const [installmentModeType, setInstallmentModeType] = useState<'divide' | 'repeat'>('divide');
+  const [installmentsCount, setInstallmentsCount] = useState('12');
 
-  const [recurrencePeriod] = useState<string>('Mensal');
+  const [recurrencePeriod, setRecurrencePeriod] = useState<string>('Mensal');
+  const [recurrenceEndType, setRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
+
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedCardView, setSelectedCardView] = useState<string>(creditCards[0]?.id || '');
+
+  const formatCurrency = (val: number): string => {
+    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  };
 
   const parseFormattedNumber = (valStr: string): number => {
     if (!valStr) return 0;
@@ -235,6 +288,7 @@ export default function App() {
     }
 
     setCurrentUser(foundUser);
+    setCurrentModule('transactions');
   };
 
   const handleLogout = () => {
@@ -307,6 +361,17 @@ export default function App() {
               </div>
             </div>
 
+            <div className="flex items-center justify-between text-xs pt-1">
+              <span className="text-slate-400">Dica padrão: <strong>admin</strong> / <strong>admin123</strong></span>
+              <button
+                type="button"
+                onClick={() => setIsForgotModalOpen(true)}
+                className="text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer transition"
+              >
+                Esqueci minha senha
+              </button>
+            </div>
+
             <button
               type="submit"
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition shadow-md cursor-pointer text-sm"
@@ -360,9 +425,68 @@ export default function App() {
     );
   }
 
+  // FUNÇÕES DE EDIÇÃO DE CONTAS E CARTÕES
+  const openEditAccountModal = (accName: string) => {
+    setEditingAccountOldName(accName);
+    setAccountNameInput(accName);
+    setIsAccountModalOpen(true);
+  };
+
+  const handleSaveAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accountNameInput.trim() || !editingAccountOldName) return;
+
+    const trimmedNew = accountNameInput.trim();
+    setAccounts(accounts.map(a => a === editingAccountOldName ? trimmedNew : a));
+    
+    setTransactions(transactions.map(t => {
+      if (t.account === editingAccountOldName) {
+        return { ...t, account: trimmedNew };
+      }
+      return t;
+    }));
+
+    setIsAccountModalOpen(false);
+    setEditingAccountOldName(null);
+    setAccountNameInput('');
+  };
+
+  const openEditCardModal = (card: CreditCardAccount) => {
+    setEditingCard(card);
+    setCardNameInput(card.name);
+    setCardBankInput(card.bank);
+    setCardLimitInput(card.totalLimit.toString());
+    setCardClosingInput(card.closingDay.toString());
+    setCardDueInput(card.dueDay.toString());
+    setIsCardModalOpen(true);
+  };
+
+  const handleSaveCard = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCard || !cardNameInput.trim()) return;
+
+    const limitVal = parseFormattedNumber(cardLimitInput);
+    const closingVal = parseInt(cardClosingInput) || 10;
+    const dueVal = parseInt(cardDueInput) || 17;
+
+    const updatedCard: CreditCardAccount = {
+      ...editingCard,
+      name: cardNameInput.trim(),
+      bank: cardBankInput.trim() || editingCard.bank,
+      totalLimit: limitVal,
+      closingDay: closingVal,
+      dueDay: dueVal
+    };
+
+    setCreditCards(creditCards.map(c => c.id === updatedCard.id ? updatedCard : c));
+    setIsCardModalOpen(false);
+    setEditingCard(null);
+  };
+
   const activeTransactions = transactions.filter(t => !t.deletedAt);
   const trashedTransactions = transactions.filter(t => t.deletedAt);
 
+  // FUNÇÕES DE AÇÃO EM LOTE NA LIXEIRA
   const handleSelectAllTrash = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
       setSelectedTrashIds(trashedTransactions.map(t => t.id));
@@ -414,6 +538,7 @@ export default function App() {
     setTimeout(() => setDuplicateMessage(null), 4000);
   };
 
+  // PROJEÇÃO DE RECORRÊNCIAS COM BASE NO INTERVALO DE DATAS
   const getExpandedTransactions = () => {
     const result: Transaction[] = [];
     const startYear = filterStartDate ? new Date(filterStartDate + 'T00:00:00').getFullYear() : new Date().getFullYear();
@@ -600,6 +725,7 @@ export default function App() {
           </button>
         </div>
 
+        {/* Modal da Lixeira com Ações em Lote */}
         {isTrashModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 border border-slate-200 text-xs">
@@ -667,6 +793,7 @@ export default function App() {
           </div>
         )}
 
+        {/* Modal de Confirmação para Exclusão Definitiva em Lote */}
         {isBatchPermanentModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4 border border-slate-200 text-xs z-50">
@@ -690,6 +817,7 @@ export default function App() {
           </div>
         )}
 
+        {/* Filtro por Período de Data */}
         <div className="bg-slate-100 p-4 rounded-xl space-y-3">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase">
             <Filter className="w-4 h-4 text-indigo-600" /> Filtrar por Período de Data
