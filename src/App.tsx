@@ -572,43 +572,58 @@ export default function App() {
   };
 
   const getExpandedTransactions = () => {
-    const result: Transaction[] = [];
-    const viewedYear = currentYear;
-    const viewedMonth = currentMonth;
+  const result: Transaction[] = [];
+  const viewedYear = currentYear;
+  const viewedMonth = currentMonth;
 
-    activeTransactions.forEach(t => {
-      if (t.recurringInfo && t.recurringInfo.includes('Mensal') && !t.installmentGroup) {
-        const origDate = new Date((t.dueDate || t.date) + 'T00:00:00');
-        const origYear = origDate.getFullYear();
-        const origMonth = origDate.getMonth();
-        const origDay = origDate.getDate();
+  activeTransactions.forEach(t => {
+    // Verifica se é uma transação recorrente (ex: Mensal) e não faz parte de um parcelamento fixo
+    if (t.recurringInfo && t.recurringInfo.toLowerCase().includes('mensal') && !t.installmentGroup) {
+      const origDateStr = t.dueDate || t.date;
+      if (!origDateStr) {
+        result.push(t);
+        return;
+      }
 
-        const diffMonths = (viewedYear - origYear) * 12 + (viewedMonth - origMonth);
-        if (diffMonths >= 0) {
-          const targetDateObj = new Date(viewedYear, viewedMonth, Math.min(origDay, 28));
-          const targetDateStr = targetDateObj.toISOString().split('T')[0];
+      const origDate = new Date(origDateStr + 'T00:00:00');
+      const origYear = origDate.getFullYear();
+      const origMonth = origDate.getMonth();
+      const origDay = origDate.getDate();
 
-          const existsReal = activeTransactions.some(sub => 
-            sub.installmentGroup === t.installmentGroup && 
-            sub.dueDate?.startsWith(`${viewedYear}-${String(viewedMonth + 1).padStart(2, '0')}`)
-          );
+      // Calcula a diferença em meses entre a data original e o mês visualizado na tela
+      const diffMonths = (viewedYear - origYear) * 12 + (viewedMonth - origMonth);
 
-          if (!existsReal || diffMonths === 0) {
-            result.push({
-              ...t,
-              id: diffMonths === 0 ? t.id : `${t.id}-rec-${viewedYear}-${viewedMonth}`,
-              dueDate: targetDateStr,
-              date: targetDateStr
-            });
-            return;
-          }
+      // Se o mês visualizado for igual ou posterior ao mês de início da recorrência
+      if (diffMonths >= 0) {
+        // Mantém o mesmo dia do mês (limitado a 28 para evitar problemas com fevereiro, ou usa o dia original)
+        const targetDay = Math.min(origDay, 28);
+        const targetDateObj = new Date(viewedYear, viewedMonth, targetDay);
+        const targetDateStr = targetDateObj.toISOString().split('T')[0];
+
+        // Verifica se já existe uma transação real cadastrada especificamente para este mês/ano
+        const existsReal = activeTransactions.some(sub => 
+          sub.description.trim().toLowerCase() === t.description.trim().toLowerCase() &&
+          sub.amount === t.amount &&
+          sub.dueDate?.startsWith(`${viewedYear}-${String(viewedMonth + 1).padStart(2, '0')}`)
+        );
+
+        // Se for o mês original OU se não houver lançamento real duplicado neste mês, projeta a recorrência
+        if (diffMonths === 0 || !existsReal) {
+          result.push({
+            ...t,
+            id: diffMonths === 0 ? t.id : `${t.id}-rec-${viewedYear}-${viewedMonth}`,
+            dueDate: targetDateStr,
+            date: targetDateStr
+          });
+          return;
         }
       }
-      result.push(t);
-    });
+    }
+    result.push(t);
+  });
 
-    return result;
-  };
+  return result;
+};
 
   const expandedActiveTransactions = getExpandedTransactions();
 
