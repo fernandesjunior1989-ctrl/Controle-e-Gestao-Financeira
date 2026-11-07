@@ -90,7 +90,7 @@ export default function App() {
 
   const [currentModule, setCurrentModule] = useState<'transactions' | 'accounts' | 'cards' | 'payables' | 'receivables' | 'cashflow' | 'budget' | 'reports' | 'settings'>('transactions');
 
-  // ESTADOS DO FILTRO DE PERÍODO (DATA INICIAL E FINAL)
+  // FILTRO POR INTERVALO DE DATAS (DATA INICIAL E DATA FINAL)
   const [startDateFilter, setStartDateFilter] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
