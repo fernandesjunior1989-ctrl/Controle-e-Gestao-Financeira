@@ -90,10 +90,8 @@ export default function App() {
   const [forgotSuccess, setForgotSuccess] = useState(false);
 
   const [currentModule, setCurrentModule] = useState<'transactions' | 'accounts' | 'cards' | 'payables' | 'receivables' | 'cashflow' | 'budget' | 'reports' | 'settings'>('transactions');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // ESTADOS DO FILTRO DE PERÍODO (SUBSTITUÍDO POR DATA INICIAL E FINAL)
+  // ESTADOS DO FILTRO DE PERÍODO (DATA INICIAL E FINAL)
   const [startDateFilter, setStartDateFilter] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
@@ -161,72 +159,21 @@ export default function App() {
     return ['Banco do Brasil', 'Bradesco', 'Carteira'];
   });
 
-  // MODAIS DE EDIÇÃO DE CONTAS E CARTÕES
-  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
-  const [editingAccountOldName, setEditingAccountOldName] = useState<string | null>(null);
-  const [accountNameInput, setAccountNameInput] = useState('');
-
-  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
-  const [editingCard, setEditingCard] = useState<CreditCardAccount | null>(null);
-  const [cardNameInput, setCardNameInput] = useState('');
-  const [cardBankInput, setCardBankInput] = useState('');
-  const [cardLimitInput, setCardLimitInput] = useState('');
-  const [cardClosingInput, setCardClosingInput] = useState('10');
-  const [cardDueInput, setCardDueInput] = useState('17');
-
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
-  const [duplicateMessage, setDuplicateMessage] = useState<string | null>(null);
-
-  // ESTADOS DE EDIÇÃO DE LANÇAMENTO
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [editScope, setEditScope] = useState<'single' | 'forward' | 'all'>('single');
-  const [editDescription, setEditDescription] = useState('');
-  const [editAmount, setEditAmount] = useState('');
-  const [editCategory, setEditCategory] = useState('');
-  const [editDueDate, setEditDueDate] = useState('');
-  const [editType, setEditType] = useState<'income' | 'expense'>('expense');
-  
-  const [editLaunchMode, setEditLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
-  const [editInstallmentModeType, setEditInstallmentModeType] = useState<'divide' | 'repeat'>('divide');
-  const [editInstallmentsCount, setEditInstallmentsCount] = useState('12');
-  const [editRecurrencePeriod, setEditRecurrencePeriod] = useState<string>('Mensal');
-  const [editRecurrenceEndType, setEditRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
-  const [editRecurrenceEndDate, setEditRecurrenceEndDate] = useState('');
-
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
-  const [deleteOption, setDeleteOption] = useState<'single' | 'forward' | 'all'>('single');
-
-  const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
-  const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
-
-  // ESTADOS DA LIXEIRA
-  const [selectedTrashIds, setSelectedTrashIds] = useState<string[]>([]);
-  const [isPermanentDeleteModalOpen, setIsPermanentDeleteModalOpen] = useState(false);
-  const [permanentIdToDelete, setPermanentIdToDelete] = useState<string | null>(null);
-  const [isBatchPermanentModalOpen, setIsBatchPermanentModalOpen] = useState(false);
 
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Outros');
   const [paymentSource, setPaymentSource] = useState<string>('acc-Banco do Brasil');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
-  const [status] = useState<'paid' | 'pending'>('pending');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [launchMode, setLaunchMode] = useState<'single' | 'installment' | 'recurring'>('single');
   const [installmentModeType, setInstallmentModeType] = useState<'divide' | 'repeat'>('divide');
   const [installmentsCount, setInstallmentsCount] = useState('12');
+  const [recurrencePeriod] = useState<string>('Mensal');
 
-  const [recurrencePeriod, setRecurrencePeriod] = useState<string>('Mensal');
-  const [recurrenceEndType, setRecurrenceEndType] = useState<'indeterminate' | 'date'>('indeterminate');
-  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
-
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedCardView, setSelectedCardView] = useState<string>(creditCards[0]?.id || '');
+  const [selectedCardView] = useState<string>(creditCards[0]?.id || '');
 
   const formatCurrency = (val: number): string => {
     return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -433,86 +380,7 @@ export default function App() {
     );
   }
 
-  // FUNÇÕES DE EDIÇÃO DE CONTAS E CARTÕES
-  const openEditAccountModal = (accName: string) => {
-    setEditingAccountOldName(accName);
-    setAccountNameInput(accName);
-    setIsAccountModalOpen(true);
-  };
-
-  const handleSaveAccount = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!accountNameInput.trim() || !editingAccountOldName) return;
-
-    const trimmedNew = accountNameInput.trim();
-    setAccounts(accounts.map(a => a === editingAccountOldName ? trimmedNew : a));
-    
-    // Atualizar nas transações associadas
-    setTransactions(transactions.map(t => {
-      if (t.account === editingAccountOldName) {
-        return { ...t, account: trimmedNew };
-      }
-      return t;
-    }));
-
-    setIsAccountModalOpen(false);
-    setEditingAccountOldName(null);
-    setAccountNameInput('');
-  };
-
-  const openEditCardModal = (card: CreditCardAccount) => {
-    setEditingCard(card);
-    setCardNameInput(card.name);
-    setCardBankInput(card.bank);
-    setCardLimitInput(card.totalLimit.toString());
-    setCardClosingInput(card.closingDay.toString());
-    setCardDueInput(card.dueDay.toString());
-    setIsCardModalOpen(true);
-  };
-
-  const handleSaveCard = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingCard || !cardNameInput.trim()) return;
-
-    const limitVal = parseFormattedNumber(cardLimitInput);
-    const closingVal = parseInt(cardClosingInput) || 10;
-    const dueVal = parseInt(cardDueInput) || 17;
-
-    const updatedCard: CreditCardAccount = {
-      ...editingCard,
-      name: cardNameInput.trim(),
-      bank: cardBankInput.trim() || editingCard.bank,
-      totalLimit: limitVal,
-      closingDay: closingVal,
-      dueDay: dueVal
-    };
-
-    setCreditCards(creditCards.map(c => c.id === updatedCard.id ? updatedCard : c));
-    setIsCardModalOpen(false);
-    setEditingCard(null);
-  };
-
   const activeTransactions = transactions.filter(t => !t.deletedAt);
-  const trashedTransactions = transactions.filter(t => t.deletedAt);
-
-  const handleRemoveDuplicates = () => {
-    const seen = new Set<string>();
-    let removedCount = 0;
-
-    const cleanedTransactions = transactions.filter(t => {
-      const key = `${t.description.trim().toLowerCase()}_${t.amount}_${t.dueDate || t.date}_${t.type}_${t.account}`;
-      if (seen.has(key)) {
-        removedCount++;
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-
-    setTransactions(cleanedTransactions);
-    setDuplicateMessage(`Limpeza concluída! ${removedCount} lançamento(s) duplicado(s) removido(s).`);
-    setTimeout(() => setDuplicateMessage(null), 4000);
-  };
 
   const getExpandedTransactions = () => {
     const result: Transaction[] = [];
@@ -543,7 +411,7 @@ export default function App() {
             sub.description.trim().toLowerCase() === t.description.trim().toLowerCase() &&
             sub.amount === t.amount &&
             sub.dueDate?.startsWith(`${viewedYear}-${String(viewedMonth + 1).padStart(2, '0')}`)
-        );
+          );
 
           if (diffMonths === 0 || !existsReal) {
             result.push({
@@ -580,110 +448,6 @@ export default function App() {
     .reduce((acc, t) => acc + t.amount, 0);
 
   const saldoMes = totalEntradasMes - totalSaidasMes;
-
-  const cashFlowProjections = Array.from({ length: 6 }, (_, index) => {
-    const baseDate = startDateFilter ? new Date(startDateFilter + 'T00:00:00') : new Date();
-    const projDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + index, 1);
-    const pYear = projDate.getFullYear();
-    const pMonth = projDate.getMonth();
-    const pName = projDate.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
-
-    const pTxs = expandedActiveTransactions.filter(t => {
-      const targetDate = new Date((t.dueDate || t.date) + 'T00:00:00');
-      return targetDate.getFullYear() === pYear && targetDate.getMonth() === pMonth;
-    });
-
-    const pIncome = pTxs.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-    const pExpense = pTxs.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
-    const pBalance = pIncome - pExpense;
-
-    return { name: pName, income: pIncome, expense: pExpense, balance: pBalance };
-  });
-
-  const getBroughtForwardBalance = (cardId: string, targetYear: number, targetMonth: number) => {
-    let prevYear = targetYear;
-    let prevMonth = targetMonth - 1;
-    if (prevMonth < 0) {
-      prevMonth = 11;
-      prevYear -= 1;
-    }
-    const prevMonthKey = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}`;
-
-    const prevTxs = expandedActiveTransactions.filter(t => {
-      if (t.creditCardId !== cardId) return false;
-      const d = new Date((t.dueDate || t.date) + 'T00:00:00');
-      return d.getFullYear() === prevYear && d.getMonth() === prevMonth;
-    });
-    const prevTotal = prevTxs.reduce((acc, t) => acc + t.amount, 0);
-    const prevPayments = invoicePayments
-      .filter(p => p.cardId === cardId && p.monthKey === prevMonthKey)
-      .reduce((acc, p) => acc + p.amountPaid, 0);
-
-    const diff = prevTotal - prevPayments;
-    return diff > 0 ? diff : 0;
-  };
-
-  const baseCurrentDateObj = startDateFilter ? new Date(startDateFilter + 'T00:00:00') : new Date();
-  const currentYear = baseCurrentDateObj.getFullYear();
-  const currentMonth = baseCurrentDateObj.getMonth();
-  const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
-
-  const activeCard = creditCards.find(c => c.id === selectedCardView) || creditCards[0];
-  const broughtForward = activeCard ? getBroughtForwardBalance(activeCard.id, currentYear, currentMonth) : 0;
-
-  const getCardLimitDetails = (cardId: string) => {
-    const card = creditCards.find(c => c.id === cardId);
-    if (!card) return { total: 0, used: 0, available: 0 };
-    
-    const used = expandedActiveTransactions
-      .filter(t => t.creditCardId === cardId && t.status === 'pending')
-      .reduce((acc, t) => acc + t.amount, 0);
-
-    return {
-      total: card.totalLimit,
-      used: used + broughtForward,
-      available: card.totalLimit - (used + broughtForward)
-    };
-  };
-
-  const activeCardLimit = activeCard ? getCardLimitDetails(activeCard.id) : null;
-  const activeCardMonthTransactions = activeCard 
-    ? periodTransactions.filter(t => t.creditCardId === activeCard.id) 
-    : [];
-
-  const invoiceMonthTotal = activeCardMonthTransactions.reduce((acc, t) => acc + t.amount, 0) + broughtForward;
-  const cardPaymentsThisMonth = activeCard ? invoicePayments.filter(p => p.cardId === activeCard.id && p.monthKey === monthKey) : [];
-  const totalPaidThisMonth = cardPaymentsThisMonth.reduce((acc, p) => acc + p.amountPaid, 0);
-  const totalFeesThisMonth = cardPaymentsThisMonth.reduce((acc, p) => acc + p.interestAndFees, 0);
-  const pendingInvoiceMonthTotal = Math.max(0, (invoiceMonthTotal + totalFeesThisMonth) - totalPaidThisMonth);
-
-  const invoiceStatus = pendingInvoiceMonthTotal === 0 
-    ? 'Paga' 
-    : totalPaidThisMonth > 0 
-    ? 'Parcialmente Paga' 
-    : 'Aberta';
-
-  const exportToCSV = () => {
-    const headers = ["Status", "Descricao", "Conta/Cartao", "Categoria", "Vencimento", "Tipo", "Valor"];
-    const rows = periodTransactions.map(t => [
-      t.status === 'paid' ? 'Pago' : 'Pendente',
-      `"${t.description}"`,
-      `"${t.account}"`,
-      `"${t.category}"`,
-      t.dueDate || t.date,
-      t.type === 'income' ? 'Receita' : 'Despesa',
-      t.amount.toFixed(2).replace('.', ',')
-    ]);
-
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(";"), ...rows.map(e => e.join(";"))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `extrato_filtrado.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const calculateInvoiceDueDate = (purchaseDateStr: string, card: CreditCardAccount, monthOffset: number = 0) => {
     const dateObj = new Date(purchaseDateStr + 'T00:00:00');
@@ -844,16 +608,6 @@ export default function App() {
     );
   };
 
-  const restoreFromTrash = (id: string) => {
-    setTransactions(prev =>
-      prev.map(t => (t.id === id ? { ...t, deletedAt: undefined } : t))
-    );
-  };
-
-  const permanentlyDelete = (id: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== id));
-  };
-
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm">
@@ -867,24 +621,21 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <button
-          <div>
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs">
-              <span className="font-semibold text-slate-600">Período:</span>
-              <input
-                type="date"
-                value={startDateFilter}
-                onChange={(e) => setStartDateFilter(e.target.value)}
-                className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs"
-              />
-              <span className="text-slate-400">até</span>
-              <input
-                type="date"
-                value={endDateFilter}
-                onChange={(e) => setEndDateFilter(e.target.value)}
-                className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs"
-              />
-            </div>
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs">
+            <span className="font-semibold text-slate-600">Período:</span>
+            <input
+              type="date"
+              value={startDateFilter}
+              onChange={(e) => setStartDateFilter(e.target.value)}
+              className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs"
+            />
+            <span className="text-slate-400">até</span>
+            <input
+              type="date"
+              value={endDateFilter}
+              onChange={(e) => setEndDateFilter(e.target.value)}
+              className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs"
+            />
           </div>
           <button
             onClick={handleLogout}
@@ -1014,11 +765,11 @@ export default function App() {
                         </td>
                       </tr>
                     ))
-                )}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
         </main>
       </div>
 
