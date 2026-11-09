@@ -787,8 +787,7 @@ export default function App() {
     .filter(t => t.type === 'expense')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  const saldoMes = totalEntradasMes - totalSaidasMes;
-
+  
   // Resultado realizado: considera exclusivamente receitas recebidas e despesas pagas.
   const totalRecebidoMes = periodTransactions
     .filter(t => t.type === 'income' && t.status === 'paid')
