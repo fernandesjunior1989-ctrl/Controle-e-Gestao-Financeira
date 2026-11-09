@@ -787,8 +787,7 @@ export default function App() {
     .filter(t => t.type === 'expense')
     .reduce((acc, t) => acc + t.amount, 0);
 
-  const saldoMes = totalEntradasMes - totalSaidasMes;
-
+  
   // Resultado pendente: considera somente receitas ainda não recebidas
   // menos despesas ainda não pagas, respeitando o período selecionado.
   const totalAReceberMes = periodTransactions
