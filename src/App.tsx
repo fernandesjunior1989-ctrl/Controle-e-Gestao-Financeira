@@ -27,6 +27,28 @@ interface Transaction {
   status: 'paid' | 'pending';
   installmentInfo?: string;
   recurringInfo?: string;
+  // Snapshot imutável dos dados-base da série, usado para que editar a primeira ocorrência
+  // não altere automaticamente os meses seguintes.
+  recurrenceTemplate?: {
+    date: string;
+    dueDate: string;
+    description: string;
+    category: string;
+    account: string;
+    creditCardId?: string;
+    amount: number;
+    type: 'income' | 'expense';
+    recurringInfo: string;
+  };
+  recurrenceOverrides?: Array<{
+    fromDate: string;
+    description: string;
+    category: string;
+    account: string;
+    creditCardId?: string;
+    amount: number;
+    type: 'income' | 'expense';
+  }>;
   installmentGroup?: string;
   deletedAt?: string;
   auditHistory?: string[];
@@ -637,15 +659,29 @@ export default function App() {
       const orderedItems = [...groupItems].sort((a, b) =>
         (a.dueDate || a.date).localeCompare(b.dueDate || b.date)
       );
-      const master = orderedItems[0];
-      const isIndeterminate = master.recurringInfo?.includes('Indeterminada') || orderedItems.length === 1;
-      if (!isIndeterminate || !master.recurringInfo) return;
+      // Se a ocorrência original já foi editada individualmente, ela guarda
+      // o modelo anterior da série. Isso impede que a edição do primeiro mês
+      // seja copiada para as projeções futuras.
+      const master = groupItems.find(item => item.recurrenceTemplate) || orderedItems[0];
+      const template = master.recurrenceTemplate || {
+        date: master.date,
+        dueDate: master.dueDate || master.date,
+        description: master.description,
+        category: master.category,
+        account: master.account,
+        creditCardId: master.creditCardId,
+        amount: master.amount,
+        type: master.type,
+        recurringInfo: master.recurringInfo || ''
+      };
+      const isIndeterminate = template.recurringInfo.includes('Indeterminada') || orderedItems.length === 1;
+      if (!isIndeterminate || !template.recurringInfo) return;
 
-      const periodMatch = master.recurringInfo.match(/Recorrente\s*\(([^)]+)\)/i);
+      const periodMatch = template.recurringInfo.match(/Recorrente\s*\(([^)]+)\)/i);
       const recurrencePeriod = periodMatch?.[1]?.trim();
       if (!recurrencePeriod) return;
 
-      const originalDateString = master.dueDate || master.date;
+      const originalDateString = template.dueDate || template.date;
       const baseDate = parseLocalDate(originalDateString);
       // Inclui também ocorrências na lixeira: uma ocorrência excluída não
       // deve reaparecer automaticamente na próxima renderização.
@@ -654,6 +690,9 @@ export default function App() {
           .filter(item => item.installmentGroup === master.installmentGroup)
           .map(item => item.dueDate || item.date)
       );
+      // A data original continua consumida mesmo se o vencimento dessa
+      // ocorrência tiver sido alterado pelo usuário.
+      realDates.add(originalDateString);
 
       // Calcula o índice inicial diretamente para evitar percorrer anos de
       // ocorrências diárias/semanais anteriores ao período exibido.
@@ -681,9 +720,28 @@ export default function App() {
         const occurrenceDateString = formatLocalDate(occurrenceDate);
         if (occurrenceDateString < originalDateString || realDates.has(occurrenceDateString)) continue;
 
+        const { recurrenceTemplate: _recurrenceTemplate, recurrenceOverrides: _recurrenceOverrides, ...masterData } = master;
+        const applicableOverrides = (master.recurrenceOverrides || [])
+          .filter(item => item.fromDate <= occurrenceDateString)
+          .sort((a, b) => a.fromDate.localeCompare(b.fromDate));
+        const latestOverride = applicableOverrides[applicableOverrides.length - 1];
+        const overrideFields = latestOverride
+          ? {
+              description: latestOverride.description,
+              category: latestOverride.category,
+              account: latestOverride.account,
+              creditCardId: latestOverride.creditCardId,
+              amount: latestOverride.amount,
+              type: latestOverride.type
+            }
+          : {};
+
         result.push({
-          ...master,
+          ...masterData,
+          ...template,
+          ...overrideFields,
           id: `${master.id}-rec-${occurrenceDateString}`,
+          installmentGroup: master.installmentGroup,
           date: occurrenceDateString,
           dueDate: occurrenceDateString,
           status: 'pending'
@@ -1041,9 +1099,9 @@ export default function App() {
 
     if (t.installmentInfo) {
       setEditLaunchMode('installment');
-    } else if (t.recurringInfo) {
-      setEditLaunchMode('recurring');
     } else {
+      // Recorrências abrem como lançamento único: a edição mensal é isolada
+      // por padrão e não recria nem modifica a série inteira.
       setEditLaunchMode('single');
     }
 
@@ -1182,12 +1240,55 @@ export default function App() {
       setTransactions(newTransactionsList);
     } else {
       const auditMsg = `Editado por ${currentUser.username} em ${new Date().toLocaleString()}: alterado para R$ ${newAmt}`;
+      const recurringGroupItems = targetGroup
+        ? transactions.filter(item => item.installmentGroup === targetGroup && !!item.recurringInfo)
+        : [];
+      const recurringMaster = recurringGroupItems.find(item => item.recurrenceTemplate) ||
+        [...recurringGroupItems].sort((a, b) =>
+          (a.dueDate || a.date).localeCompare(b.dueDate || b.date)
+        )[0];
+      const editedOccurrenceDate = editingTransaction.dueDate || editingTransaction.date;
+      const updatedSeriesFields = {
+        description: editDescription,
+        category: editCategory,
+        account: editingTransaction.account,
+        creditCardId: editingTransaction.creditCardId,
+        amount: newAmt,
+        type: editType
+      };
 
       setTransactions(transactions.map(t => {
+        const isRecurringGroupItem = !!targetGroup && t.installmentGroup === targetGroup && !!t.recurringInfo;
+
         if (t.id === editingTransaction.id) {
-          const formattedDesc = t.installmentInfo 
-            ? `${editDescription} (${t.installmentInfo.replace('Parcela ', '')})` 
+          const formattedDesc = t.installmentInfo
+            ? `${editDescription} (${t.installmentInfo.replace('Parcela ', '')})`
             : editDescription;
+          let recurrenceTemplate = t.recurrenceTemplate;
+          let recurrenceOverrides = t.recurrenceOverrides;
+
+          if (isRecurringGroupItem && t.id === recurringMaster?.id) {
+            const baseTemplate = recurrenceTemplate || {
+              date: t.date,
+              dueDate: t.dueDate || t.date,
+              description: t.description,
+              category: t.category,
+              account: t.account,
+              creditCardId: t.creditCardId,
+              amount: t.amount,
+              type: t.type,
+              recurringInfo: t.recurringInfo || ''
+            };
+            recurrenceTemplate = baseTemplate;
+
+            if (editScope === 'all') {
+              recurrenceTemplate = { ...baseTemplate, ...updatedSeriesFields };
+              recurrenceOverrides = [];
+            } else if (editScope === 'forward') {
+              const remainingOverrides = (recurrenceOverrides || []).filter(item => item.fromDate !== editedOccurrenceDate);
+              recurrenceOverrides = [...remainingOverrides, { fromDate: editedOccurrenceDate, ...updatedSeriesFields }];
+            }
+          }
 
           return {
             ...t,
@@ -1196,16 +1297,59 @@ export default function App() {
             category: editCategory,
             dueDate: editDueDate,
             type: editType,
+            ...(recurrenceTemplate ? { recurrenceTemplate } : {}),
+            ...(recurrenceOverrides ? { recurrenceOverrides } : {}),
             auditHistory: [...(t.auditHistory || []), auditMsg]
           };
         }
 
-        if (targetGroup && t.installmentGroup === targetGroup) {
-          if (editScope === 'forward' && t.dueDate > editingTransaction.dueDate) {
-            const formattedDesc = t.installmentInfo 
-              ? `${editDescription} (${t.installmentInfo.replace('Parcela ', '')})` 
-              : editDescription;
+        // Se a edição for aplicada a partir de uma ocorrência posterior, a
+        // série-base recebe uma regra de substituição somente dali em diante.
+        if (isRecurringGroupItem && t.id === recurringMaster?.id && editScope === 'forward') {
+          const baseTemplate = t.recurrenceTemplate || {
+            date: t.date,
+            dueDate: t.dueDate || t.date,
+            description: t.description,
+            category: t.category,
+            account: t.account,
+            creditCardId: t.creditCardId,
+            amount: t.amount,
+            type: t.type,
+            recurringInfo: t.recurringInfo || ''
+          };
+          const remainingOverrides = (t.recurrenceOverrides || []).filter(item => item.fromDate !== editedOccurrenceDate);
+          return {
+            ...t,
+            recurrenceTemplate: baseTemplate,
+            recurrenceOverrides: [...remainingOverrides, { fromDate: editedOccurrenceDate, ...updatedSeriesFields }]
+          };
+        }
 
+        if (isRecurringGroupItem && t.id === recurringMaster?.id && editScope === 'all') {
+          const baseTemplate = t.recurrenceTemplate || {
+            date: t.date,
+            dueDate: t.dueDate || t.date,
+            description: t.description,
+            category: t.category,
+            account: t.account,
+            creditCardId: t.creditCardId,
+            amount: t.amount,
+            type: t.type,
+            recurringInfo: t.recurringInfo || ''
+          };
+          return {
+            ...t,
+            recurrenceTemplate: { ...baseTemplate, ...updatedSeriesFields },
+            recurrenceOverrides: []
+          };
+        }
+
+        if (targetGroup && t.installmentGroup === targetGroup) {
+          const itemDate = t.dueDate || t.date;
+          if (editScope === 'forward' && itemDate > editedOccurrenceDate) {
+            const formattedDesc = t.installmentInfo
+              ? `${editDescription} (${t.installmentInfo.replace('Parcela ', '')})`
+              : editDescription;
             return {
               ...t,
               description: formattedDesc,
@@ -1215,10 +1359,9 @@ export default function App() {
             };
           }
           if (editScope === 'all') {
-            const formattedDesc = t.installmentInfo 
-              ? `${editDescription} (${t.installmentInfo.replace('Parcela ', '')})` 
+            const formattedDesc = t.installmentInfo
+              ? `${editDescription} (${t.installmentInfo.replace('Parcela ', '')})`
               : editDescription;
-
             return {
               ...t,
               description: formattedDesc,
@@ -2375,18 +2518,24 @@ export default function App() {
                   onChange={(e) => setEditLaunchMode(e.target.value as any)}
                   className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white font-semibold text-indigo-900"
                 >
-                  <option value="single">Lançamento Único / Padrão</option>
+                  <option value="single">{editingTransaction.recurringInfo ? 'Editar somente esta ocorrência' : 'Lançamento Único / Padrão'}</option>
                   <option value="installment">Parcelado (Finito)</option>
                   <option value="recurring">Recorrente (Contínuo)</option>
                 </select>
               </div>
 
+              {editingTransaction.recurringInfo && editLaunchMode === 'single' && (
+                <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg p-2">
+                  A recorrência será mantida. Por padrão, a alteração afeta somente esta ocorrência.
+                </p>
+              )}
+
               {editingTransaction.installmentGroup && editLaunchMode === 'single' && (
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2 text-xs">
-                  <span className="font-bold text-slate-700 block uppercase">Aplicar Alterações Em:</span>
+                  <span className="font-bold text-slate-700 block uppercase">Aplicar alterações em:</span>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="radio" name="editScopeOpt" checked={editScope === 'single'} onChange={() => setEditScope('single')} />
-                    <span>Somente neste lançamento</span>
+                    <span>Somente neste mês (padrão)</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="radio" name="editScopeOpt" checked={editScope === 'forward'} onChange={() => setEditScope('forward')} />
