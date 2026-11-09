@@ -778,6 +778,7 @@ export default function App() {
     }
   });
 
+  // Totais previstos: incluem lançamentos pagos/recebidos e pendentes.
   const totalEntradasMes = periodTransactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + t.amount, 0);
@@ -787,6 +788,17 @@ export default function App() {
     .reduce((acc, t) => acc + t.amount, 0);
 
   const saldoMes = totalEntradasMes - totalSaidasMes;
+
+  // Resultado realizado: considera exclusivamente receitas recebidas e despesas pagas.
+  const totalRecebidoMes = periodTransactions
+    .filter(t => t.type === 'income' && t.status === 'paid')
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  const totalPagoMes = periodTransactions
+    .filter(t => t.type === 'expense' && t.status === 'paid')
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  const saldoRealizadoMes = totalRecebidoMes - totalPagoMes;
 
   const cashFlowProjections = Array.from({ length: 6 }, (_, index) => {
     const projDate = new Date(currentYear, currentMonth + index, 1);
@@ -1655,23 +1667,23 @@ export default function App() {
 
               <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs space-y-1">
-                  <span className="text-[11px] font-bold uppercase text-emerald-700 tracking-wider">Total de Entradas</span>
-                  <div className="text-xl font-bold text-emerald-600">{formatCurrency(totalEntradasMes)}</div>
-                  <p className="text-[11px] text-slate-400">Soma das receitas no período selecionado</p>
+                  <span className="text-[11px] font-bold uppercase text-emerald-700 tracking-wider">Total Recebido</span>
+                  <div className="text-xl font-bold text-emerald-600">{formatCurrency(totalRecebidoMes)}</div>
+                  <p className="text-[11px] text-slate-400">Somente receitas marcadas como recebidas</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-xs space-y-1">
-                  <span className="text-[11px] font-bold uppercase text-rose-700 tracking-wider">Total de Saídas</span>
-                  <div className="text-xl font-bold text-rose-600">{formatCurrency(totalSaidasMes)}</div>
-                  <p className="text-[11px] text-slate-400">Soma das despesas no período selecionado</p>
+                  <span className="text-[11px] font-bold uppercase text-rose-700 tracking-wider">Total Pago</span>
+                  <div className="text-xl font-bold text-rose-600">{formatCurrency(totalPagoMes)}</div>
+                  <p className="text-[11px] text-slate-400">Somente despesas marcadas como pagas</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
-                  <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">Saldo (Entradas - Saídas)</span>
-                  <div className={`text-xl font-bold ${saldoMes >= 0 ? 'text-indigo-900' : 'text-rose-600'}`}>
-                    {formatCurrency(saldoMes)}
+                  <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">Resultado Realizado</span>
+                  <div className={`text-xl font-bold ${saldoRealizadoMes >= 0 ? 'text-indigo-900' : 'text-rose-600'}`}>
+                    {formatCurrency(saldoRealizadoMes)}
                   </div>
-                  <p className="text-[11px] text-slate-400">Resultado financeiro do período</p>
+                  <p className="text-[11px] text-slate-400">Total recebido menos total pago</p>
                 </div>
               </section>
 
