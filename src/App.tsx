@@ -571,45 +571,128 @@ export default function App() {
     setTimeout(() => setDuplicateMessage(null), 4000);
   };
 
+  // Converte datas sem depender de UTC, evitando deslocamentos de fuso horário.
+  const formatLocalDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const parseLocalDate = (value: string) => {
+    const [year, month, day] = value.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
+  // Calcula a ocorrência preservando o dia original nos meses mais curtos.
+  const getRecurrenceDate = (baseDate: Date, period: string, occurrence: number) => {
+    const result = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+    if (period === 'Diária') {
+      result.setDate(result.getDate() + occurrence);
+    } else if (period === 'Semanal') {
+      result.setDate(result.getDate() + occurrence * 7);
+    } else if (period === 'Quinzenal') {
+      result.setDate(result.getDate() + occurrence * 15);
+    } else {
+      const monthsPerOccurrence: Record<string, number> = {
+        Mensal: 1,
+        Bimestral: 2,
+        Trimestral: 3,
+        Semestral: 6,
+        Anual: 12
+      };
+      const monthsToAdd = (monthsPerOccurrence[period] || 1) * occurrence;
+      const targetMonth = baseDate.getMonth() + monthsToAdd;
+      const lastDay = new Date(baseDate.getFullYear(), targetMonth + 1, 0).getDate();
+      result.setDate(1);
+      result.setFullYear(baseDate.getFullYear());
+      result.setMonth(targetMonth);
+      result.setDate(Math.min(baseDate.getDate(), lastDay));
+    }
+    return result;
+  };
+
   const getExpandedTransactions = () => {
-    const result: Transaction[] = [];
-    const viewedYear = currentYear;
-    const viewedMonth = currentMonth;
+    // Mantém todos os lançamentos efetivamente salvos e acrescenta apenas
+    // as ocorrências futuras que ainda não existem no banco local.
+    const result: Transaction[] = [...activeTransactions];
+    const groups = new Map<string, Transaction[]>();
 
-    activeTransactions.forEach(t => {
-      if (t.recurringInfo && t.recurringInfo.includes('Mensal') && !t.installmentGroup) {
-        const origDate = new Date((t.dueDate || t.date) + 'T00:00:00');
-        const origYear = origDate.getFullYear();
-        const origMonth = origDate.getMonth();
-        const origDay = origDate.getDate();
+    activeTransactions.forEach(transaction => {
+      if (!transaction.recurringInfo || !transaction.installmentGroup) return;
+      const group = groups.get(transaction.installmentGroup) || [];
+      group.push(transaction);
+      groups.set(transaction.installmentGroup, group);
+    });
 
-        const diffMonths = (viewedYear - origYear) * 12 + (viewedMonth - origMonth);
-        if (diffMonths >= 0) {
-          const targetDateObj = new Date(viewedYear, viewedMonth, Math.min(origDay, 28));
-          const targetDateStr = targetDateObj.toISOString().split('T')[0];
+    const yearStart = new Date(currentYear, 0, 1);
+    const yearEnd = new Date(currentYear, 11, 31);
+    const sixMonthProjectionEnd = new Date(currentYear, currentMonth + 6, 0);
+    let windowStart = customStartDate ? parseLocalDate(customStartDate) : yearStart;
+    let windowEnd = customEndDate ? parseLocalDate(customEndDate) : yearEnd;
+    if (windowEnd < sixMonthProjectionEnd) windowEnd = sixMonthProjectionEnd;
+    if (windowStart > yearStart && !customStartDate) windowStart = yearStart;
 
-          const existsReal = activeTransactions.some(sub => 
-            sub.installmentGroup === t.installmentGroup && 
-            sub.dueDate?.startsWith(`${viewedYear}-${String(viewedMonth + 1).padStart(2, '0')}`)
-          );
+    groups.forEach(groupItems => {
+      const orderedItems = [...groupItems].sort((a, b) =>
+        (a.dueDate || a.date).localeCompare(b.dueDate || b.date)
+      );
+      const master = orderedItems[0];
+      const isIndeterminate = master.recurringInfo?.includes('Indeterminada') || orderedItems.length === 1;
+      if (!isIndeterminate || !master.recurringInfo) return;
 
-          if (!existsReal || diffMonths === 0) {
-            result.push({
-              ...t,
-              id: diffMonths === 0 ? t.id : `${t.id}-rec-${viewedYear}-${viewedMonth}`,
-              dueDate: targetDateStr,
-              date: targetDateStr
-            });
-            return;
-          }
+      const periodMatch = master.recurringInfo.match(/Recorrente\s*\(([^)]+)\)/i);
+      const recurrencePeriod = periodMatch?.[1]?.trim();
+      if (!recurrencePeriod) return;
+
+      const originalDateString = master.dueDate || master.date;
+      const baseDate = parseLocalDate(originalDateString);
+      // Inclui também ocorrências na lixeira: uma ocorrência excluída não
+      // deve reaparecer automaticamente na próxima renderização.
+      const realDates = new Set(
+        transactions
+          .filter(item => item.installmentGroup === master.installmentGroup)
+          .map(item => item.dueDate || item.date)
+      );
+
+      // Calcula o índice inicial diretamente para evitar percorrer anos de
+      // ocorrências diárias/semanais anteriores ao período exibido.
+      let occurrence = 0;
+      if (windowStart > baseDate) {
+        const daysDifference = Math.floor((windowStart.getTime() - baseDate.getTime()) / 86400000);
+        if (recurrencePeriod === 'Diária') occurrence = Math.max(0, daysDifference);
+        else if (recurrencePeriod === 'Semanal') occurrence = Math.max(0, Math.floor(daysDifference / 7));
+        else if (recurrencePeriod === 'Quinzenal') occurrence = Math.max(0, Math.floor(daysDifference / 15));
+        else {
+          const monthDifference = (windowStart.getFullYear() - baseDate.getFullYear()) * 12 +
+            windowStart.getMonth() - baseDate.getMonth();
+          const interval = recurrencePeriod === 'Bimestral' ? 2 :
+            recurrencePeriod === 'Trimestral' ? 3 :
+            recurrencePeriod === 'Semestral' ? 6 :
+            recurrencePeriod === 'Anual' ? 12 : 1;
+          occurrence = Math.max(0, Math.floor(monthDifference / interval));
         }
       }
-      result.push(t);
+
+      // O limite evita crescimento descontrolado em históricos muito longos.
+      for (let count = 0; count < 5000; count++, occurrence++) {
+        const occurrenceDate = getRecurrenceDate(baseDate, recurrencePeriod, occurrence);
+        if (occurrenceDate > windowEnd) break;
+        const occurrenceDateString = formatLocalDate(occurrenceDate);
+        if (occurrenceDateString < originalDateString || realDates.has(occurrenceDateString)) continue;
+
+        result.push({
+          ...master,
+          id: `${master.id}-rec-${occurrenceDateString}`,
+          date: occurrenceDateString,
+          dueDate: occurrenceDateString,
+          status: 'pending'
+        });
+      }
     });
 
     return result;
   };
-
   const expandedActiveTransactions = getExpandedTransactions();
 
   const periodTransactions = expandedActiveTransactions.filter(t => {
@@ -851,39 +934,29 @@ export default function App() {
         }
       }
     } else if (launchMode === 'recurring') {
-      const baseDateObj = new Date(purchaseDate + 'T00:00:00');
-      let iterations = recurrenceEndType === 'indeterminate' ? 1 : 12;
-      
-      let stepDays = 30;
-      if (recurrencePeriod === 'Diária') stepDays = 1;
-      else if (recurrencePeriod === 'Semanal') stepDays = 7;
-      else if (recurrencePeriod === 'Quinzenal') stepDays = 15;
-      else if (recurrencePeriod === 'Mensal') stepDays = 30;
-      else if (recurrencePeriod === 'Bimestral') stepDays = 60;
-      else if (recurrencePeriod === 'Trimestral') stepDays = 90;
-      else if (recurrencePeriod === 'Semestral') stepDays = 180;
-      else if (recurrencePeriod === 'Anual') stepDays = 365;
+      const baseDateObj = parseLocalDate(purchaseDate);
+      const endDateObj = recurrenceEndType === 'date' && recurrenceEndDate
+        ? parseLocalDate(recurrenceEndDate)
+        : null;
 
-      if (recurrenceEndType === 'date' && recurrenceEndDate) {
-        const endObj = new Date(recurrenceEndDate + 'T00:00:00');
-        const diffTime = Math.abs(endObj.getTime() - baseDateObj.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        iterations = Math.max(1, Math.floor(diffDays / (stepDays || 30)));
+      if (endDateObj && endDateObj < baseDateObj) {
+        alert('A data final da recorrência não pode ser anterior à data inicial.');
+        return;
       }
 
-      for (let i = 0; i < iterations; i++) {
-        const currentD = new Date(baseDateObj);
-        if (recurrencePeriod === 'Anual') {
-          currentD.setFullYear(baseDateObj.getFullYear() + i);
-        } else if (recurrencePeriod === 'Mensal' || recurrencePeriod === 'Bimestral' || recurrencePeriod === 'Trimestral' || recurrencePeriod === 'Semestral') {
-          const monthsAdd = recurrencePeriod === 'Mensal' ? i : recurrencePeriod === 'Bimestral' ? i * 2 : recurrencePeriod === 'Trimestral' ? i * 3 : i * 6;
-          currentD.setMonth(baseDateObj.getMonth() + monthsAdd);
-        } else {
-          currentD.setDate(baseDateObj.getDate() + (i * stepDays));
+      // Recorrência com prazo indeterminado salva somente a ocorrência-base.
+      // As próximas são calculadas dinamicamente em getExpandedTransactions.
+      // Recorrência com data final salva todas as ocorrências até a data-limite.
+      const datesToCreate: string[] = [formatLocalDate(baseDateObj)];
+      if (endDateObj) {
+        for (let occurrence = 1; occurrence < 5000; occurrence++) {
+          const nextDate = getRecurrenceDate(baseDateObj, recurrencePeriod, occurrence);
+          if (nextDate > endDateObj) break;
+          datesToCreate.push(formatLocalDate(nextDate));
         }
+      }
 
-        const formattedDate = currentD.toISOString().split('T')[0];
-
+      datesToCreate.forEach((formattedDate, index) => {
         const recurringTransaction: Transaction = {
           id: crypto.randomUUID(),
           description,
@@ -894,13 +967,15 @@ export default function App() {
           dueDate: formattedDate,
           amount: baseAmount,
           type,
-          status: i === 0 ? status : 'pending',
-          recurringInfo: `Recorrente (${recurrencePeriod})`,
+          status: index === 0 ? status : 'pending',
+          recurringInfo: endDateObj
+            ? `Recorrente (${recurrencePeriod})`
+            : `Recorrente (${recurrencePeriod}) - Indeterminada`,
           installmentGroup: groupId,
           auditHistory: [`Criado por ${currentUser.username} em ${new Date().toLocaleString()}`]
         };
         newTransactionsList.unshift(recurringTransaction);
-      }
+      });
     } else {
       const singleTransaction: Transaction = {
         id: crypto.randomUUID(),
@@ -931,15 +1006,30 @@ export default function App() {
   };
 
   const toggleStatus = (id: string) => {
-    setTransactions(transactions.map(t => {
-      if (t.id === id) {
-        return { ...t, status: t.status === 'paid' ? 'pending' : 'paid' };
-      }
-      return t;
-    }));
+    const savedTransaction = transactions.find(t => t.id === id);
+    if (savedTransaction) {
+      setTransactions(transactions.map(t =>
+        t.id === id ? { ...t, status: t.status === 'paid' ? 'pending' : 'paid' } : t
+      ));
+      return;
+    }
+
+    // Ocorrências futuras são virtuais até o usuário interagir com elas.
+    // Ao alterar o status, materializa a ocorrência para persistir a mudança.
+    const virtualTransaction = expandedActiveTransactions.find(t => t.id === id);
+    if (virtualTransaction) {
+      setTransactions([...transactions, {
+        ...virtualTransaction,
+        status: virtualTransaction.status === 'paid' ? 'pending' : 'paid'
+      }]);
+    }
   };
 
   const openEditModal = (t: Transaction) => {
+    // Permite editar uma ocorrência gerada dinamicamente como qualquer outra.
+    if (!transactions.some(item => item.id === t.id)) {
+      setTransactions([...transactions, t]);
+    }
     setEditingTransaction(t);
     const cleanDesc = t.description.replace(/\s\(\d+\/\d+\)$/, '');
     setEditDescription(cleanDesc);
@@ -1158,7 +1248,8 @@ export default function App() {
     const nowIso = new Date().toISOString();
     const targetGroup = transactionToDelete.installmentGroup;
 
-    setTransactions(transactions.map(t => {
+    const occurrenceAlreadySaved = transactions.some(t => t.id === transactionToDelete.id);
+    const updatedTransactions = transactions.map(t => {
       if (t.id === transactionToDelete.id) {
         return { ...t, deletedAt: nowIso };
       }
@@ -1171,7 +1262,11 @@ export default function App() {
         }
       }
       return t;
-    }));
+    });
+    if (!occurrenceAlreadySaved && deleteOption === 'single') {
+      updatedTransactions.push({ ...transactionToDelete, deletedAt: nowIso });
+    }
+    setTransactions(updatedTransactions);
 
     setIsDeleteModalOpen(false);
     setTransactionToDelete(null);
